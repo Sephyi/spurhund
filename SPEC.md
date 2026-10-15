@@ -317,16 +317,16 @@ Status 2026-10-15: milestones 1 and 2 are implemented and tested offline; milest
 - **Cancel and reap:** `cancel_research` on a job whose worker is gone ends it as `canceled`; a job whose worker died without a cancel request becomes `failed`. A canceled or failed job still gets a partial report.
 - **Report:** states `Partial result` when the job did not complete or an Exa run stopped at its budget or time limit; counts, coverage, engines, costs and gaps come from the database.
 - **CLI:** `plan`, `start --approve`, `status`, `result [--full]`, `cancel`, internal `worker --job`.
-- **Tests:** `bun run test` (offline, vitest) and `bun run test:live` (opt-in, costs listed in the README). The same scripts run with npm, and the offline suite also passes under Bun's native `bun test`.
+- **Tests:** `bun run test` (offline, Vitest) and `bun run test:live` (opt-in, costs listed in the README). The same scripts run with npm. `bun run --bun test` runs Vitest on Bun; Bun's native test runner is not the verification gate.
 
-### Review fixes (2026-10-15, before the first live run)
+### Worker isolation and request handling
 
 - **Worker isolation:** sessions run with `strictMcpConfig: true`, and the in-process server is named `spurhund_job`, so user, project and plugin MCP servers (including the user's own `spurhund`) never load into a worker.
 - **No duplicate paid runs:** `agent.runs.create` is never retried. Each create carries `metadata.spurhund_nonce`. On an ambiguous failure (timeout, 5xx, network), the run is looked up by nonce among the 25 latest and adopted; if it is not found, the worst case is charged and the user is told to check for an orphan.
 - **Timeouts:** every Exa call is raced against 90 s. The published exa-js 2.25.0 has no timeout or AbortSignal option, so the socket may linger, but callers, limiter slots and the pipeline move on.
 - **Job-scoped reads:** "page read" (evidence) and `verified` count only pages this job fetched (a cache hit counts, a read in another job or an ad-hoc fetch does not). `list_findings` shows read states as this job sees them.
 
-### Medium review fixes (2026-10-15)
+### Privacy and lifecycle guarantees
 
 - **Fetch inside a job** is limited to URLs a search, an Exa run or the user's own question (and notes) produced, so a fetched page cannot make Exa deliver data to an attacker's URL. The planner has no job, so it gets `search` only. The ad-hoc MCP `fetch` stays unrestricted (the calling Claude client is the user's own).
 - **URL checks** work on parsed addresses: trailing dots, `*.localhost`, IPv4-mapped and NAT64 IPv6, `::`, link-local, site-local and multicast ranges, `198.18/15`, `192.0.0/24`, `224/4` and up. Redaction terms are matched against the raw, percent-decoded and Unicode (punycode) forms.
@@ -337,7 +337,9 @@ Status 2026-10-15: milestones 1 and 2 are implemented and tested offline; milest
 - **Worker tools:** `merge_findings` only touches the session's own job; a segment's planned engines are binding for its `search` calls; `list_findings` with `only_unverified` always returns the first remaining page.
 - **Output size:** one `fetch` result holds at most 100,000 characters of page text (Claude Desktop cuts at about 150,000). `structuredContent` no longer repeats page text and keeps at most two short snippets per search result.
 
-### Not verified yet (needs keys on the Mac)
+### Live integration coverage
+
+These integrations are covered only by opt-in live tests. Offline tests use mocks or injected SDK behavior and do not establish provider compatibility:
 
 - Whether Exa returns `metadata` in `agent.runs.list` results (the live Agent test checks it). If not, an ambiguous create always falls back to charging the worst case.
 
@@ -345,3 +347,33 @@ Status 2026-10-15: milestones 1 and 2 are implemented and tested offline; milest
 - A real Claude Agent SDK session with the in-process tools (the SDK is mocked offline; `SPURHUND_LIVE_CLAUDE=1` checks it).
 - A complete `standard` job end to end (`SPURHUND_LIVE_JOB=1`).
 - Whether the API accepts the generated planner/merge/report JSON Schemas unchanged through the SDK's `outputFormat`. `test/schema.test.ts` checks them against Anthropic's documented limits (no numeric or string constraints, `additionalProperties: false`, 7 union-typed parameters against a limit of 16, no optional parameters), so a rejection would point to something the docs do not list; simplify `worker/plan.ts` if it happens.
+
+### Report correctness and gap resolution
+
+- Evidence is refreshed from job-scoped successful reads (`read` or `truncated`) when findings' sources change, findings merge, verification is set, and immediately before report assembly. A later verifier fetch no longer leaves an earlier snippet label stale.
+- Coverage is explicitly assessed at merge, before verification. The merge prompt must not describe verification status.
+- Schema v3 migrates v1/v2 databases in place. Gaps add nullable `resolved_note` and `resolved_by_json`. Only the verify role gets `resolve_gap`; resolution requires verified findings in the same job. Reports separate open and closed gaps, retaining resolution notes and finding ids. Status/summary gap counts include only open gaps.
+- Narrative output contains only `summary`, instructed to use prose, at most 250 words and finding-id citations. `keyTakeaways` is removed from the schema, JSON report, Markdown and result summary.
+- Planner success criteria describe requirements, not candidate answers, figures or dates. Calibration hints belong in notes prefixed `Unverified lead:`; segment prompts require confirmation or refutation.
+
+### Token and cost control
+
+- Schema v3 also adds `claude_sessions(id, job_id, role, label, cost_usd, turns, subtype, duration_ms, created_at)`. The pipeline records one row per returned SDK session result alongside the existing job total. Reports aggregate role, session count, turns and estimated cost under **Claude usage by phase**. Planning sessions are deliberately not stored: they have no job and are outside the research-job usage cap.
+- `SPURHUND_MAX_CLAUDE_USD_PER_JOB` defaults to `3`, must be finite and greater than zero, and limits estimated Claude usage for a job. Before each session, the pipeline subtracts accumulated usage and parallel reservations, then passes the smaller of the per-session budget and remaining allowance to SDK `maxBudgetUsd`. Parallel segments reserve shares of that allowance. Exhaustion skips later non-report sessions, records events/gaps and marks the report partial.
+- Report generation always gets a minimum $0.15 allowance, even beyond the job or per-session cap. This intentional overshoot preserves a narrative for a partial job. SDK budgets are checked at model-call boundaries and use estimates, so $0.15 is not a strict bound on actual overshoot. Canceled/failed jobs still receive the deterministic report without another Claude session.
+- Worker search shows the first 10 merged results, title, URL, engines, date and one snippet of at most 300 characters. Full results remain stored; user-facing search is unchanged. Worker fetch accepts at most 3 URLs, defaults to 6,000 characters per page, and still permits an explicit request up to 60,000. Findings stay at 60 per page, one claim/status line plus its sources.
+- Exa 2.25.0 supports highlights with `query` and `maxCharacters`. Verify-only fetch accepts optional `claim`, requests highlights without full text and marks nonempty output `truncated`, never `read`. This counts as fetched evidence but cannot alone establish `verified`. Highlight reads bypass full-text cache reuse and store a zero full-text capacity, so later full-page verification fetches do not mistake highlights for complete content.
+- Core caches successful searches per engine and canonical parameter JSON inside the worker's in-memory job Core, including in-flight duplicate calls. Cache hits make no new engine call, charge or `engine_calls` row. Failed calls are evicted. Ad-hoc search remains uncached; no TTL or DB table was added.
+
+### Runtime limits and lifecycle
+
+- **Concurrency and retries:** limiter release hands a slot directly to a waiter, Retry-After above 30 seconds fails immediately with the original error, and parallel execute work settles before the first fatal rejection is rethrown.
+- **Reports, logs and source metadata:** report turns respect `min(SPURHUND_MAX_TURNS, 10)`, workers log only to stderr (already redirected to their per-job log), URL canonicalization preserves `ref` but strips `ref_src`, and empty stored titles/publication dates can be filled by later nonempty metadata.
+- **Planning estimates:** Brave prices come from `PRICES`, and planner per-segment allowances use `DEPTH_ESTIMATES`. The planner must not invent dollar totals. Exa planning estimates add `MAX_GAP_SEARCHES × PRICES.exaSearch`, plus one maximal 25-result search and up to 10 original/extra citation reads per target finding (6 original + 4 extra). Follow-up phases can spend Exa even after Brave-only segments. These are planning allowances, not programmatic search/phase quotas; the existing Exa ledger is the hard spend control. Gap/Exa Agent findings and repeated verifier searches can exceed those allowances within that cap.
+- **Source independence:** critical-source independence counts sites using a last-two-label heuristic, or last three for a two-letter TLD preceded by `co/com/org/net/gov/ac/edu`. Subdomains do not become independent confirmations. This is deliberately not a full public-suffix or organization-ownership resolver.
+- **CLI cap validation:** CLI plan/start reuse the MCP numeric schema and messages, enforce at least $0.10, a $100 schema ceiling and the configured Exa maximum before auth/runtime work. Starting still cannot raise the plan's approved cap.
+- **Cancellation and progress:** the external abort handler is removed in `runJob`'s `finally`; progress is throttled by the known session label, including segment id, instead of parsing the first colon out of log text.
+
+### Offline verification
+
+Run `bun run verify` for typechecking, offline tests and the production build. Use Node's `npx vitest run test/stdio.test.ts` for explicit CLI and protocol checks, and `bun run --bun test` to run the same Vitest suite on Bun. Tests use in-memory stores or temporary directories, fake engines and injected or scripted SDK behavior, and need no provider credentials. Live integration tests are separate and opt-in.

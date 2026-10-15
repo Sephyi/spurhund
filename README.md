@@ -5,7 +5,7 @@ Multi-engine web research for Claude, as an MCP server.
 - **`search` / `fetch`**: one call queries Exa and Brave in parallel, merges and de-duplicates the results, and records which engine found what. Pages are read through Exa with a local cache; empty pages, script shells and walls are reported as `NOT_READ` instead of being passed off as content.
 - **Research jobs**: `plan_research` → you approve the plan and its worst-case cost → `start_research`. A detached worker (Claude Agent SDK) researches segments in parallel, can run Exa Agent runs next to them, merges, closes gaps, verifies claims and writes a report with per-engine provenance and costs. Jobs survive closing Claude, and they work in Claude Desktop chat, whose tool calls time out after 240 s.
 
-Status: first version. The unit and protocol tests pass; the live tests (real Exa, Brave and Claude) have not been run yet, see [Live tests](#live-tests).
+Status: first version. Live integration tests are opt-in; see [Live tests](#live-tests).
 
 ## Requirements
 
@@ -94,6 +94,10 @@ spurhund cancel job_0123456789ab
 
 Reports are also MCP resources: `spurhund://reports/<job_id>.md` and `.json`, and files in `$SPURHUND_HOME/reports/`.
 
+Reports contain one prose summary (the model is instructed to keep it under 250 words), findings with current job-scoped evidence, **Coverage (assessed at merge, before verification)**, separate **Open gaps** and **Closed gaps**, and **Claude usage by phase** (role, sessions, turns, estimated cost). Closed gaps cite the verified finding ids that answer them. Status counts and result summaries show only open gaps. The JSON report no longer contains `keyTakeaways`.
+
+Worker output is deliberately smaller than the ad-hoc tools: search shows the top 10 merged results with one snippet of at most 300 characters each; fetch accepts up to 3 URLs and defaults to 6,000 characters per page. Verification can request claim-specific Exa highlights, marked `TRUNCATED`, never a full-page read. Full engine results remain in SQLite. Identical searches within one worker job reuse an in-memory cache without another engine call or charge.
+
 ### What a job does
 
 1. **Plan** (`plan_research`, orchestrator model): segments, angles, languages, engines, optional Exa Agent runs. The code validates the plan (segment counts per depth, approved languages only, effort and budget rules, worst-case cost against the cap) and sends it back for one correction if it fails.
@@ -124,8 +128,9 @@ All settings are environment variables. Invalid values stop startup with a messa
 | `SPURHUND_MODEL_VERIFIER` | worker model | verification |
 | `SPURHUND_EFFORT_ORCHESTRATOR` / `_WORKER` / `_VERIFIER` | `high` / `medium` / `high` | `medium`, `high`, `xhigh` or `max`. `low` is rejected |
 | `SPURHUND_EXA_MAX_USD_PER_JOB` | `5` | hard Exa cap per job, enforced by a ledger that reserves worst-case amounts before each call |
+| `SPURHUND_MAX_CLAUDE_USD_PER_JOB` | `3` | positive per-job Claude usage estimate cap. Non-report sessions stop when exhausted; report generation still gets at least $0.15 |
 | `SPURHUND_MAX_TURNS` | `200` | upper bound for the per-session turn limits |
-| `SPURHUND_MAX_BUDGET_USD` | unset | Agent SDK `maxBudgetUsd` per session. A client-side estimate; with `oauth` it limits usage, not a bill |
+| `SPURHUND_MAX_BUDGET_USD` | unset | Agent SDK `maxBudgetUsd` per session, further limited by the remaining job allowance. Report generation overrides this when needed for its $0.15 minimum |
 | `SPURHUND_MAX_CONCURRENT_JOBS` | `2` | parallel worker processes; more jobs wait |
 | `SPURHUND_FETCH_CACHE_DAYS` | `7` | how long a fetched page is reused |
 | `SPURHUND_REDACT` | unset | comma-separated terms (internal hostnames, names) removed from every outgoing query and refused in fetched URLs |
@@ -133,15 +138,20 @@ All settings are environment variables. Invalid values stop startup with a messa
 
 To try another model, set the variable in the client config, for example `SPURHUND_MODEL_WORKER=claude-haiku-5-5`.
 
+**Claude cap semantics.** Parallel segment sessions reserve slices of the remaining job allowance before starting. Exhaustion records an event and gap, skips later non-report sessions and marks the report partial. The SDK checks estimated usage at model-call boundaries, so this is not a hard billing or subscription-quota guarantee. The final report receives at least $0.15 even after exhaustion and can therefore exceed the configured cap, with additional SDK estimation overshoot possible. Planning happens before the job and is excluded from both this cap and the per-phase usage table.
+
+The plan's Exa estimate includes segment work, depth-specific gap searches, and verification searches/page reads based on target finding counts. These are planning allowances, not phase quotas. The Exa ledger remains the spend control. CLI `--max-exa` accepts $0.10 through the smaller of $100 and the configured cap; `start` also cannot raise the approved plan's cap.
+
 **Billing and the two credentials.** Claude Code prefers `ANTHROPIC_API_KEY` over `CLAUDE_CODE_OAUTH_TOKEN` when both are set. spurhund therefore hands the Claude subprocess exactly one credential, chosen by `SPURHUND_AUTH`, and never passes it `EXA_API_KEY` or `BRAVE_API_KEY`. Every report records which mode ran. Anthropic's terms say Pro and Max limits assume ordinary, individual use of Claude Code and the Agent SDK, so keep subscription mode for your own use; building a service for others needs an API key.
 
 ## Safety model
 
 - **No spending before approval.** `start_research` needs `approve: true` and the tool description tells the model to show you the plan and its worst-case cost first.
 - **Hard Exa cap.** Parallel calls cannot overshoot: each call reserves its worst case and settles with the reported cost. `auto` and `ultra` always carry a budget.
+- **Claude usage cap.** Later non-report sessions are skipped after the estimated job allowance is exhausted; a partial report is still generated under the documented report minimum.
 - **Locked-down workers.** The Claude sessions have no Bash, file, web or other built-in tools, load none of your skills, settings or CLAUDE.md, and run with unlisted tools denied. They can only search, fetch, and record findings.
 - **Findings cannot cite what was not seen.** A URL must have come from a search, a fetch or an Exa run in the same job, and "page read" is computed from what was actually read.
-- **`verified` is earned in code.** It needs a page read in full; a critical claim needs two independent hosts that were read. Otherwise the status is downgraded and the note says why.
+- **`verified` is earned in code.** It needs a page read in full; a critical claim also needs evidence read from two independent sites, not two subdomains of one site. Site counting uses a small last-label/ccTLD heuristic, not a public-suffix database. Highlights alone cannot establish `verified`. Otherwise the status is downgraded and the note says why.
 - **Queries and URLs are cleaned before leaving the machine.** Secrets (API keys, tokens, private keys, JWTs, and your configured key values themselves), private URLs and IPs, internal host names and `SPURHUND_REDACT` terms are removed from queries and Exa Agent task text. `fetch` refuses localhost, private IP ranges, `.local`/`.internal`/`.lan` names, credentials in URLs and redacted terms, because Exa's servers would receive them.
 - **Fetched text is data.** Prompts say so, and the tool set makes harmful actions impossible. Inside a job, `fetch` only opens URLs that the job's searches, its Exa runs or your own question produced, so a page cannot make the worker send your question to someone else's server.
 - Files are written only under `SPURHUND_HOME` (mode 0600).
@@ -152,6 +162,8 @@ To try another model, set the variable in the client config, for example `SPURHU
 bun run test         # offline (vitest under Node): unit, store, engines (mocked), pipeline (scripted Claude), MCP over memory and real stdio
 bun run typecheck
 bun run verify       # typecheck, tests, build
+bun run --bun test   # the same Vitest suite on Bun, not Bun's native test runner
+npx vitest run test/stdio.test.ts  # explicit Node CLI/protocol checks
 bun run test:live    # skipped unless enabled; see below
 ```
 
@@ -170,7 +182,7 @@ bun run test:live    # skipped unless enabled; see below
 EXA_API_KEY=... BRAVE_API_KEY=... SPURHUND_LIVE=1 bun run test:live
 ```
 
-The test runner is vitest. Bun's own runner (`bun test`) passes the offline suite as well, but the configs and the live tests are written for vitest.
+The test runner is Vitest on both runtimes. Do not substitute Bun's native test runner.
 
 ## Layout
 
