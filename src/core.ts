@@ -3,7 +3,7 @@ import { BudgetExceededError, CostLedger, type Reservation } from "./costs.js";
 import type { Store } from "./db/store.js";
 import { AmbiguousCreateError, ExaEngine, isTerminalRun, type AgentRunLike, type AgentRunRequest } from "./engines/exa.js";
 import { MAX_SEARCH_RESULTS, type Engine, type FetchedPage, type SearchQuery } from "./engines/types.js";
-import { mergeResults, type MergedResult } from "./merge.js";
+import { mergeResults, type EngineResult, type MergedResult } from "./merge.js";
 import { canonicalUrl } from "./canonical.js";
 import { assertPublicUrl, privateUrlReason, redact, redactQuery } from "./redact.js";
 import { errorMessage } from "./util.js";
@@ -80,6 +80,7 @@ const MAX_FETCH_CHARS = 60_000;
 
 export class Core {
   private readonly now: () => number;
+  private readonly searchCache = new Map<string, Promise<{ results: EngineResult[] | undefined; report: EngineReport }>>();
   private readonly runs = new Map<string, { effort: AgentRunRequest["effort"]; worstCase: number; reservation: Reservation; planRunId: string }>();
 
   /** Configured redaction terms plus the configured API key values themselves. */
@@ -143,7 +144,7 @@ export class Core {
       to: input.to,
     };
 
-    const outcomes = await Promise.all(runnable.map((engine) => this.runEngine(engine, q)));
+    const outcomes = await Promise.all(runnable.map((engine) => this.cachedEngineSearch(engine, q)));
     const lists = [];
     let costUsd = 0;
     for (const o of outcomes) {
@@ -163,6 +164,22 @@ export class Core {
       throw new NoEngineError(`All engines failed: ${reports.map((r) => `${r.engine}: ${r.error}`).join("; ")}`);
     }
     return { results, engines: reports, costUsd, redactions: qr + (objective?.redactions ?? 0) };
+  }
+
+  private async cachedEngineSearch(engine: Engine, q: SearchQuery) {
+    if (!this.deps.jobId) return this.runEngine(engine, q);
+    // q has a fixed field order, independent of the caller's parameter insertion order.
+    const key = JSON.stringify([engine.id, q]);
+    const cached = this.searchCache.get(key);
+    if (cached) {
+      const out = await cached;
+      return { ...out, report: { ...out.report, costUsd: 0 } };
+    }
+    const pending = this.runEngine(engine, q);
+    this.searchCache.set(key, pending);
+    const out = await pending;
+    if (!out.report.ok) this.searchCache.delete(key);
+    return out;
   }
 
   private async runEngine(engine: Engine, q: SearchQuery) {

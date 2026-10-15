@@ -128,7 +128,7 @@ describe("11: a segment's planned engines are binding", () => {
   it("a Brave-only segment never spends Exa, even if the model asks for it", async () => {
     const { h, run } = search(["brave"]);
     await run();
-    await run({ engines: ["exa", "brave"] });
+    await run({ query: "another query", engines: ["exa", "brave"] });
     expect(h.exaClient.search).not.toHaveBeenCalled();
     expect(h.brave.fetchImpl).toHaveBeenCalledTimes(2);
     const only = await run({ engines: ["exa"] });

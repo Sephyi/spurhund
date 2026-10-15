@@ -198,3 +198,29 @@ it("requests claim highlights without text, marks them truncated, then really fe
     expect(segmentFetch.shape).not.toHaveProperty("claim");
   } finally { h.store.close(); }
 });
+
+describe("in-job search cache", () => {
+  it.each([false, true])("charges identical searches once, concurrent=%s", async (concurrent) => {
+    const h = harness({ job: { cap: 5 }, engines: ["exa"], exa: { search: () => ({ results: [{ url: "https://example.com/", highlights: ["lead"] }], costDollars: { total: 0.01 } }) } });
+    try {
+      const search = () => h.core.search({ query: "official protocol releases", objective: "release dates", numResults: 10 });
+      const [first, second] = concurrent ? await Promise.all([search(), search()]) : [await search(), await search()];
+      expect(h.exaClient.search).toHaveBeenCalledTimes(1);
+      expect(second.results).toEqual(first.results);
+      expect(first.costUsd + second.costUsd).toBeCloseTo(0.01);
+      expect(h.store.jobStats(h.core.jobId!).engineCalls).toBe(1);
+      expect(h.store.sumCost(h.core.jobId!, "exa")).toBeCloseTo(0.01);
+      await h.core.search({ query: "official protocol releases", objective: "different goal" });
+      expect(h.exaClient.search).toHaveBeenCalledTimes(2);
+    } finally { h.store.close(); }
+  });
+
+  it("does not cache ad-hoc searches", async () => {
+    const h = harness({ engines: ["exa"] });
+    try {
+      await h.core.search({ query: "q" });
+      await h.core.search({ query: "q" });
+      expect(h.exaClient.search).toHaveBeenCalledTimes(2);
+    } finally { h.store.close(); }
+  });
+});
