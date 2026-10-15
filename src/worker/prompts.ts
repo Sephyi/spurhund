@@ -156,6 +156,7 @@ export function verifyPrompt(opts: { plan: Plan; gaps?: { id: number; descriptio
     `Open gaps: ${(opts.gaps ?? []).map((g) => `#${g.id}: ${g.description}`).join("; ") || "none"}. Close those answered by verified findings with resolve_gap, citing the finding ids and a note. Leave unanswered gaps open.`,
     "Go through list_findings with only_unverified=true until none are left. For each finding set a status with set_verification:",
     "- Each source in the list shows its read state in brackets. If no source of a finding is [read], fetch the best one first; never fetch a page that is already [read].",
+    "- For a narrow supporting check, fetch with claim to get concise highlights. These count as TRUNCATED and cannot alone establish verified; omit claim when a full-page read is required.",
     "- verified: a page that was read in full states the claim as written (names, versions, dates).",
     "- single_source: only one source supports it, or the claim holds only in part.",
     "- unverified: you could not check it (page not readable, source gone).",

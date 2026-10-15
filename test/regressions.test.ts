@@ -171,3 +171,30 @@ describe("compact worker output", () => {
     } finally { h.store.close(); }
   });
 });
+
+it("requests claim highlights without text, marks them truncated, then really fetches full text", async () => {
+  const h = harness({ job: { cap: 5 }, engines: ["exa"], exa: { getContents: (urls, options) => ({ results: urls.map((url) => ({ url, ...(options.highlights ? { highlights: ["The release supports TLS."] } : { text: LONG_TEXT }) })) }) } });
+  const jobId = h.core.jobId!;
+  const url = "https://example.com/releases";
+  h.core.seedUserUrls(url);
+  const sourceId = h.store.getSourceByUrl(url)!.id;
+  h.store.saveFetch(sourceId, { readStatus: "read", text: LONG_TEXT, maxChars: 6000 });
+  const id = h.store.addFinding({ jobId, segment: "s", claim: "The release supports TLS", sourceIds: [sourceId], sourceKind: "primary", evidence: "snippet" });
+  const tools = buildToolset("verify", { core: h.core, store: h.store, jobId });
+  const fetch = tools.find((t) => t.name === "fetch")!;
+  try {
+    const highlights = await fetch.handler({ urls: [url], claim: "Does this release support TLS?" });
+    expect(h.exaClient.getContents).toHaveBeenCalledTimes(1);
+    expect(h.exaClient.getContents.mock.calls[0]![1]).toEqual({ highlights: { query: "Does this release support TLS?", maxCharacters: 6000 } });
+    expect(highlights.text).toContain("TRUNCATED");
+    expect(h.store.getSource(sourceId)!.readStatus).toBe("truncated");
+    const checked = await tools.find((t) => t.name === "set_verification")!.handler({ finding_id: id, status: "verified", note: "Only highlights" });
+    expect(checked.text).toContain("unverified");
+    expect(h.store.getFinding(id)!.evidence).toBe("fetched");
+    await fetch.handler({ urls: [url] });
+    expect(h.exaClient.getContents).toHaveBeenCalledTimes(2);
+    expect(h.store.getSource(sourceId)!.readStatus).toBe("read");
+    const segmentFetch = buildToolset("segment", { core: h.core, store: h.store, jobId }).find((t) => t.name === "fetch")!;
+    expect(segmentFetch.shape).not.toHaveProperty("claim");
+  } finally { h.store.close(); }
+});

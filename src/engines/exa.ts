@@ -156,8 +156,9 @@ export class ExaEngine implements Engine {
     return urlCount * PRICES.exaPage;
   }
 
-  async fetch(urls: string[], maxCharacters: number): Promise<FetchOutput> {
-    const res = await this.call(() => this.client.getContents(urls, { text: { maxCharacters } }));
+  async fetch(urls: string[], maxCharacters: number, claim?: string): Promise<FetchOutput> {
+    const options = claim ? { highlights: { query: claim, maxCharacters } } : { text: { maxCharacters } };
+    const res = await this.call(() => this.client.getContents(urls, options));
     const statusByUrl = new Map((res.statuses ?? []).map((s) => [s.id, s]));
     // Match each result to the URL that was asked for: by id first (the requested URL), then by
     // canonical form, so a redirect or a trailing slash does not turn a paid page into "not read".
@@ -175,11 +176,14 @@ export class ExaEngine implements Engine {
       }
       const r = byId.get(url) ?? byCanonical.get(canonicalUrl(url));
       if (!r) return { url, status: "not_read", reason: "no content returned", text: null };
+      const text = claim ? r.highlights?.join("\n").slice(0, maxCharacters) : r.text;
       return {
         url,
         title: r.title ?? undefined,
         publishedDate: r.publishedDate,
-        ...classifyPage(r.text, maxCharacters),
+        ...(claim && text?.trim()
+          ? { status: "truncated" as const, text, reason: "claim highlights only, not a full page read" }
+          : classifyPage(text, maxCharacters)),
       };
     });
     return { pages, costUsd: res.costDollars?.total ?? this.estimateFetchCost(urls.length) };

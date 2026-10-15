@@ -117,9 +117,10 @@ export function buildToolset(role: Role, ctx: ToolContext): ToolSpec[] {
     {
       urls: z.array(z.string().url()).min(1).max(3),
       max_characters: z.number().int().min(1000).max(60_000).default(6000),
+      ...(role === "verify" ? { claim: z.string().min(1).max(1200).optional().describe("Fetch concise claim-specific highlights instead of full text. Counts as TRUNCATED, never a full-page read.") } : {}),
     },
     true,
-    async (a) => ({ text: formatFetch(await core.fetch({ urls: a.urls, maxCharacters: a.max_characters })) }),
+    async (a) => ({ text: formatFetch(await core.fetch({ urls: a.urls, maxCharacters: a.max_characters, claim: typeof a.claim === "string" ? a.claim : undefined })) }),
   );
 
   const recordFinding = define(

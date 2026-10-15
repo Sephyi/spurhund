@@ -53,6 +53,7 @@ export interface SearchOutput {
 export interface FetchInput {
   urls: string[];
   maxCharacters?: number;
+  claim?: string;
 }
 
 export interface FetchedResult extends FetchedPage {
@@ -187,6 +188,7 @@ export class Core {
   async fetch(input: FetchInput): Promise<FetchOutput> {
     const { store, config, ledger, jobId } = this.deps;
     const maxChars = Math.min(Math.max(Math.trunc(input.maxCharacters ?? DEFAULT_FETCH_CHARS), MIN_FETCH_CHARS), MAX_FETCH_CHARS);
+    const claim = input.claim ? redactQuery(input.claim, this.terms).text : undefined;
 
     if (input.urls.length === 0) throw new Error("Give at least one URL.");
     if (input.urls.length > MAX_FETCH_URLS) throw new Error(`At most ${MAX_FETCH_URLS} URLs per call.`);
@@ -217,7 +219,7 @@ export class Core {
     const out = new Map<string, FetchedResult>();
     const todo: string[] = [];
     for (const url of urls) {
-      const cached = store.getCachedFetch(url, config.fetchCacheDays, maxChars);
+      const cached = claim ? undefined : store.getCachedFetch(url, config.fetchCacheDays, maxChars);
       if (cached) {
         out.set(
           url,
@@ -242,7 +244,7 @@ export class Core {
       const started = this.now();
       let res;
       try {
-        res = await exa.fetch(todo, maxChars);
+        res = await exa.fetch(todo, maxChars, claim);
       } catch (err) {
         reservation?.release();
         store.recordCall({ jobId, engine: "exa", endpoint: "contents", query: todo.join(" "), ok: false, error: errorMessage(err), latencyMs: this.now() - started, costUsd: 0 });
@@ -271,7 +273,8 @@ export class Core {
           );
           continue;
         }
-        store.saveFetch(sourceId, { readStatus: page.status, text: page.text, maxChars });
+        // Highlights are claim-specific and must never satisfy a later full-text cache lookup.
+        store.saveFetch(sourceId, { readStatus: page.status, text: page.text, maxChars: claim ? 0 : maxChars });
         out.set(page.url, { ...page, sourceId, cached: false });
       }
     }
