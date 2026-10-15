@@ -267,3 +267,14 @@ it.each([30_001, 3_600_000])("refuses Retry-After %i ms without holding a limite
 it("preserves version-selecting ref but still strips ref_src", () => {
   expect(canonicalUrl("https://api.github.com/repos/a/b/contents/x?ref=v2&ref_src=tracking")).toBe("https://api.github.com/repos/a/b/contents/x?ref=v2");
 });
+
+it("fills empty source titles and dates without overwriting real metadata", () => {
+  const h = evidenceSetup();
+  try {
+    const id = h.store.upsertSource({ url: "https://example.com/", title: "", publishedDate: "" });
+    h.store.upsertSource({ url: "https://example.com/", title: "Release notes", publishedDate: "2026-10-01" });
+    expect(h.store.getSource(id)).toMatchObject({ title: "Release notes", publishedDate: "2026-10-01" });
+    h.store.upsertSource({ url: "https://example.com/", title: "Different", publishedDate: "2026-10-02" });
+    expect(h.store.getSource(id)).toMatchObject({ title: "Release notes", publishedDate: "2026-10-01" });
+  } finally { h.store.close(); }
+});

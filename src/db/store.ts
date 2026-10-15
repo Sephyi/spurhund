@@ -391,8 +391,8 @@ export class Store {
       .prepare(
         `INSERT INTO sources (canonical_url, url, title, published_date) VALUES (?, ?, ?, ?)
          ON CONFLICT(canonical_url) DO UPDATE SET
-           title = COALESCE(sources.title, excluded.title),
-           published_date = COALESCE(sources.published_date, excluded.published_date)
+           title = COALESCE(NULLIF(sources.title, ''), excluded.title),
+           published_date = COALESCE(NULLIF(sources.published_date, ''), excluded.published_date)
          RETURNING id`,
       )
       .get(canon, input.url, input.title ?? null, input.publishedDate ?? null) as { id: number };
