@@ -248,6 +248,7 @@ export function buildToolset(role: Role, ctx: ToolContext): ToolSpec[] {
         }
       }
       store.setVerification(f.id, status, note);
+      store.refreshEvidence(f.jobId, f.id);
       return status === a.status
         ? { text: `Finding #${f.id} set to ${status}.` }
         : { text: `Finding #${f.id} set to ${status} instead of ${a.status}: ${note}` };

@@ -314,6 +314,7 @@ export async function runJob(deps: PipelineDeps, job: JobRow): Promise<JobOutcom
       error: final.error ?? null,
       finishedAt: (deps.now?.() ?? new Date()).toISOString(),
     };
+    store.refreshEvidence(job.id);
     const { markdown, json } = buildReport(store, { job: fresh, planRow, narrative, merge: mergeResult, config });
     store.saveReport(job.id, markdown, json);
     try {

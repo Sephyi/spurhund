@@ -466,6 +466,20 @@ export class Store {
 
   setSourceIds(id: number, sourceIds: number[]): void {
     this.db.prepare("UPDATE findings SET source_ids_json = ? WHERE id = ?").run(JSON.stringify([...new Set(sourceIds)]), id);
+    const f = this.getFinding(id);
+    if (f) this.refreshEvidence(f.jobId, id);
+  }
+
+  refreshEvidence(jobId: string, findingId?: number): void {
+    this.db.prepare(`UPDATE findings SET evidence = CASE WHEN EXISTS (
+      SELECT 1 FROM json_each(findings.source_ids_json) AS cited
+      JOIN sources ON sources.id = cited.value
+      WHERE sources.read_status IN ('read', 'truncated') AND EXISTS (
+        SELECT 1 FROM source_hits WHERE source_hits.source_id = sources.id
+        AND source_hits.job_id = findings.job_id AND source_hits.engine = 'fetch'
+      )
+    ) THEN 'fetched' ELSE 'snippet' END
+    WHERE job_id = ? AND (? IS NULL OR id = ?)`).run(jobId, findingId ?? null, findingId ?? null);
   }
 
   setCritical(id: number, critical: boolean): void {
@@ -490,6 +504,7 @@ export class Store {
       this.db
         .prepare("UPDATE findings SET source_ids_json = ?, critical = ? WHERE id = ?")
         .run(JSON.stringify([...sources]), critical ? 1 : 0, keepId);
+      this.refreshEvidence(keep.jobId, keepId);
     });
     tx();
   }
