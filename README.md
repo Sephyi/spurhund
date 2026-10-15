@@ -1,15 +1,21 @@
-# spurhund
+<h1 align="center">spurhund</h1>
 
-**spurhund** (German for "tracking hound") is a local MCP server that gives Claude better web search and a background researcher.
+<p align="center">
+  <img src=".logo.webp" alt="spurhund: a hound following a trail of search results" width="380">
+</p>
+
+<p align="center"><em>German for “sleuth dog”</em></p>
+
+**spurhund** is a local MCP server that gives Claude better web search and a background researcher.
 
 - **Search:** `search` asks Exa and Brave at the same time, merges the results and shows which engine found what. `fetch` reads pages and tells you honestly when a page could not be read (empty, script shell, cookie or login wall) instead of passing it off as content.
 - **Research jobs:** you ask a question, spurhund proposes a plan with its worst-case cost, and after you approve, a background worker researches it. The worker uses the Claude Agent SDK on your subscription or an API key. It splits the question into parts, searches them in parallel, verifies the claims against pages it actually read and writes a sourced report. Jobs keep running when you close Claude, so they also work in Claude Desktop chat, where a single tool call times out after 240 s.
 
 Everything runs on your machine. Data lives in SQLite under `~/.claude/spurhund/`; the only outbound calls go to Exa, Brave and Claude.
 
-For scale: the first live `standard` job took about 2 minutes and cost $0.08 Exa, $0.05 Brave and about $0.70 of estimated Claude usage.
+> For scale: the first live `standard` job took about 2 minutes and cost $0.08 Exa, $0.05 Brave and about $0.70 of estimated Claude usage.
 
-## How a research job works
+## 🔎 How a research job works
 
 ```text
 plan_research ──► you approve ──► start_research ──► worker: segments ─► merge ─► gaps ─► verify ─► report
@@ -23,13 +29,13 @@ plan_research ──► you approve ──► start_research ──► worker: s
 5. **Verify:** each finding is checked against a page that was read in full; critical claims need two independent sites. Gaps that a verified finding answers are closed.
 6. **Report:** the model writes a short summary. Findings, sources, engine provenance, gaps and costs come straight from the database, not from the model.
 
-| `depth`      | Segments | Gap pass | Exa Agent runs                                     |
-| ------------ | -------- | -------- | -------------------------------------------------- |
-| `standard`   | 1–3      | no       | up to 2, effort `medium`                           |
-| `deep`       | 3–6      | yes      | `medium` or `high`                                 |
+| `depth`      | Segments | Gap pass | Exa Agent runs                                                           |
+| ------------ | -------- | -------- | ------------------------------------------------------------------------ |
+| `standard`   | 1–3      | no       | up to 2, effort `medium`                                                 |
+| `deep`       | 3–6      | yes      | `medium` or `high`                                                       |
 | `exhaustive` | 4–10     | yes      | up to `xhigh`, or `auto` with a budget; `ultra` only with `allow_ultra` |
 
-## Quick start
+## 🚀 Quick start
 
 You need:
 
@@ -87,7 +93,7 @@ claude mcp add --transport stdio --env EXA_API_KEY=... --env BRAVE_API_KEY=... -
 
 ### 4. Use it
 
-In Claude, just ask: "search for …", or "research … in depth". Claude shows you the plan and the cost and starts only after you agree.
+In Claude, just ask: “search for …”, or “research … in depth”. Claude shows you the plan and the cost and starts only after you agree.
 
 From the terminal:
 
@@ -102,20 +108,21 @@ spurhund result job_0123456789ab --full
 spurhund cancel job_0123456789ab
 ```
 
-## Tools
+## 🧰 Tools
 
-| Tool              | Does                                                              | Costs                                      |
-| ----------------- | ----------------------------------------------------------------- | ------------------------------------------ |
-| `search`          | Exa + Brave in parallel, merged, with the finding engine per result | about $0.01–0.03                         |
-| `fetch`           | up to 10 pages, cached for 7 days, each `READ`, `TRUNCATED` or `NOT_READ` | about $0.001 per page              |
-| `plan_research`   | proposes a plan and its worst-case Exa cost                       | at most $0.30 Exa for calibration searches, plus Claude usage |
-| `start_research`  | starts the approved plan in the background (`approve: true`)      | up to the plan's caps                      |
-| `research_status` | phase, counts, spend so far, recent events                        | nothing                                    |
-| `research_result` | `summary` or `full` report, also for canceled or failed jobs      | nothing                                    |
-| `cancel_research` | stops the job and its Exa runs; results so far stay readable      | nothing                                    |
-| `list_jobs`       | recent jobs                                                       | nothing                                    |
+| Tool              | Does                                                                      | Costs                                                         |
+| ----------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `search`          | Exa + Brave in parallel, merged, with the finding engine per result       | about $0.01–0.03                                              |
+| `fetch`           | up to 10 pages, cached for 7 days, each `READ`, `TRUNCATED` or `NOT_READ` | about $0.001 per page                                         |
+| `plan_research`   | proposes a plan and its worst-case Exa cost                               | at most $0.30 Exa for calibration searches, plus Claude usage |
+| `start_research`  | starts the approved plan in the background (`approve: true`)              | up to the plan's caps                                         |
+| `research_status` | phase, counts, spend so far, recent events                                | nothing                                                       |
+| `research_result` | `summary` or `full` report, also for canceled or failed jobs              | nothing                                                       |
+| `cancel_research` | stops the job and its Exa runs; results so far stay readable              | nothing                                                       |
+| `list_jobs`       | recent jobs                                                               | nothing                                                       |
 
 Reports are also MCP resources (`spurhund://reports/<job_id>.md` and `.json`) and files in `~/.claude/spurhund/reports/`. A report contains:
+
 - the summary;
 - findings with their verification status and sources;
 - coverage per segment;
@@ -123,41 +130,41 @@ Reports are also MCP resources (`spurhund://reports/<job_id>.md` and `.json`) an
 - which engine found which sources;
 - costs, including Claude usage per phase.
 
-## Costs and limits
+## 💰 Costs and limits
 
 - **Exa: hard cap per job** (`SPURHUND_EXA_MAX_USD_PER_JOB`, default $5). Every call reserves its worst case before it runs, so parallel calls cannot overshoot. The value is also the highest cap a plan may request. If a worker crashes, the server ends its Exa Agent runs and books their cost.
 - **Claude: usage cap per job** (`SPURHUND_MAX_CLAUDE_USD_PER_JOB`, default $3). When it is used up, the remaining phases are skipped and the report is marked partial. The final summary still gets $0.15. The SDK only estimates usage, so treat this as a strong brake, not a billing guarantee. Planning is not counted.
 - **Brave:** not covered by the Exa cap; the plan shows the expected number of requests ($5 per 1,000, with $5 of free credit each month).
 - **Subscription use:** Anthropic's terms assume Pro and Max plans are for your own, individual use of Claude Code and the Agent SDK. A service for other people needs an API key.
 
-## Configuration
+## ⚙️ Configuration
 
 All settings are environment variables. Invalid values stop startup with a list of every problem.
 
-| Variable                          | Default              | Meaning                                                                 |
-| --------------------------------- | -------------------- | ----------------------------------------------------------------------- |
-| `SPURHUND_HOME`                   | `~/.claude/spurhund` | database, `reports/`, `logs/`, `work/`                                  |
-| `SPURHUND_AUTH`                   | `oauth`              | `oauth` uses `CLAUDE_CODE_OAUTH_TOKEN`, `api` uses `ANTHROPIC_API_KEY`  |
-| `EXA_API_KEY` / `BRAVE_API_KEY`   |                      | engine keys                                                             |
-| `SPURHUND_ENGINES`                | `exa,brave`          | engines for `search` and the worker                                     |
-| `SPURHUND_MODEL_ORCHESTRATOR`     | `claude-opus-5-5`    | planning, merge, report                                                 |
-| `SPURHUND_MODEL_WORKER`           | `claude-sonnet-5-5`  | segment research, gap pass                                              |
-| `SPURHUND_MODEL_VERIFIER`         | worker model         | verification                                                            |
-| `SPURHUND_EFFORT_ORCHESTRATOR` / `_WORKER` / `_VERIFIER` | `high` / `medium` / `high` | `medium`, `high`, `xhigh` or `max` (`low` is rejected) |
-| `SPURHUND_EXA_MAX_USD_PER_JOB`    | `5`                  | hard Exa cap per job, and the highest cap a plan may ask for            |
-| `SPURHUND_MAX_CLAUDE_USD_PER_JOB` | `3`                  | estimated Claude usage cap per job                                      |
-| `SPURHUND_MAX_TURNS`              | `200`                | upper bound for the turn limit of each Claude session                   |
-| `SPURHUND_MAX_BUDGET_USD`         | unset                | extra per-session Claude budget (Agent SDK `maxBudgetUsd`)              |
-| `SPURHUND_MAX_CONCURRENT_JOBS`    | `2`                  | jobs running at once; more jobs wait                                    |
-| `SPURHUND_FETCH_CACHE_DAYS`       | `7`                  | how long a fetched page is reused                                       |
-| `SPURHUND_REDACT`                 | unset                | comma-separated terms (internal hosts, names) never sent anywhere       |
-| `SPURHUND_LOG_LEVEL`              | `info`               | logs go to stderr and `logs/`, never to stdout                          |
+| Variable                                                 | Default                    | Meaning                                                                |
+| -------------------------------------------------------- | -------------------------- | ---------------------------------------------------------------------- |
+| `SPURHUND_HOME`                                          | `~/.claude/spurhund`       | database, `reports/`, `logs/`, `work/`                                 |
+| `SPURHUND_AUTH`                                          | `oauth`                    | `oauth` uses `CLAUDE_CODE_OAUTH_TOKEN`, `api` uses `ANTHROPIC_API_KEY` |
+| `EXA_API_KEY` / `BRAVE_API_KEY`                          |                            | engine keys                                                            |
+| `SPURHUND_ENGINES`                                       | `exa,brave`                | engines for `search` and the worker                                    |
+| `SPURHUND_MODEL_ORCHESTRATOR`                            | `claude-opus-5-5`          | planning, merge, report                                                |
+| `SPURHUND_MODEL_WORKER`                                  | `claude-sonnet-5-5`        | segment research, gap pass                                             |
+| `SPURHUND_MODEL_VERIFIER`                                | worker model               | verification                                                           |
+| `SPURHUND_EFFORT_ORCHESTRATOR` / `_WORKER` / `_VERIFIER` | `high` / `medium` / `high` | `medium`, `high`, `xhigh` or `max` (`low` is rejected)                 |
+| `SPURHUND_EXA_MAX_USD_PER_JOB`                           | `5`                        | hard Exa cap per job, and the highest cap a plan may ask for           |
+| `SPURHUND_MAX_CLAUDE_USD_PER_JOB`                        | `3`                        | estimated Claude usage cap per job                                     |
+| `SPURHUND_MAX_TURNS`                                     | `200`                      | upper bound for the turn limit of each Claude session                  |
+| `SPURHUND_MAX_BUDGET_USD`                                | unset                      | extra per-session Claude budget (Agent SDK `maxBudgetUsd`)             |
+| `SPURHUND_MAX_CONCURRENT_JOBS`                           | `2`                        | jobs running at once; more jobs wait                                   |
+| `SPURHUND_FETCH_CACHE_DAYS`                              | `7`                        | how long a fetched page is reused                                      |
+| `SPURHUND_REDACT`                                        | unset                      | comma-separated terms (internal hosts, names) never sent anywhere      |
+| `SPURHUND_LOG_LEVEL`                                     | `info`                     | logs go to stderr and `logs/`, never to stdout                         |
 
 To try a different model, set it in the client config, for example `SPURHUND_MODEL_WORKER=claude-haiku-5-5`.
 
 **Credentials:** Claude Code prefers `ANTHROPIC_API_KEY` over the OAuth token when both are set. spurhund therefore gives the Claude process exactly the one credential that `SPURHUND_AUTH` selects, and never the Exa or Brave keys. Every report notes which mode ran.
 
-## Safety
+## 🛡️ Safety
 
 - **Nothing is spent before you approve.** `start_research` requires `approve: true` after you have seen the plan and its cost.
 - **The workers are locked down.** No shell, files, web access or built-in tools. None of your skills, settings or CLAUDE.md are loaded. They can only search, fetch and record findings.
@@ -166,7 +173,7 @@ To try a different model, set it in the client config, for example `SPURHUND_MOD
 - **Fetched pages are data, not instructions.** Inside a job, `fetch` only opens URLs that came from the job's own searches, its Exa runs or your question. A page cannot steer the worker to another server.
 - Files are only written under `SPURHUND_HOME`, with mode 0600.
 
-## Tests
+## 🧪 Tests
 
 ```bash
 bun run test         # offline tests (Vitest on Node), no keys needed
@@ -179,18 +186,18 @@ The test runner is Vitest on both runtimes, not Bun's built-in runner.
 
 Live tests in `test/live/` are skipped unless their switch is set:
 
-| Switch                  | Needs                          | Cost                               |
-| ----------------------- | ------------------------------ | ---------------------------------- |
-| `SPURHUND_LIVE=1`       | `EXA_API_KEY`, `BRAVE_API_KEY` | about $0.05                        |
-| `SPURHUND_LIVE_AGENT=1` | `EXA_API_KEY`                  | $0.10                              |
-| `SPURHUND_LIVE_CLAUDE=1`| Claude credential              | one tiny Haiku session             |
-| `SPURHUND_LIVE_JOB=1`   | all of the above               | about $0.15 Exa plus Claude usage  |
+| Switch                   | Needs                          | Cost                              |
+| ------------------------ | ------------------------------ | --------------------------------- |
+| `SPURHUND_LIVE=1`        | `EXA_API_KEY`, `BRAVE_API_KEY` | about $0.05                       |
+| `SPURHUND_LIVE_AGENT=1`  | `EXA_API_KEY`                  | $0.10                             |
+| `SPURHUND_LIVE_CLAUDE=1` | Claude credential              | one tiny Haiku session            |
+| `SPURHUND_LIVE_JOB=1`    | all of the above               | about $0.15 Exa plus Claude usage |
 
 ```bash
 EXA_API_KEY=... BRAVE_API_KEY=... SPURHUND_LIVE=1 bun run test:live
 ```
 
-## Layout
+## 🗂️ Layout
 
 ```text
 src/
@@ -207,7 +214,7 @@ test/                                                offline tests; test/live/ o
 
 `SPEC.md` has the full design and every behaviour detail.
 
-## Known limits
+## 🚧 Known limits
 
 - Only stdio for now: no HTTP transport with OAuth, so no claude.ai connector and no Claude Desktop chat on another machine.
 - The "found by only one engine" count in the report is a hint that coverage is thin, not a measure of recall.
