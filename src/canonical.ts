@@ -6,7 +6,6 @@ const TRACKING_PARAMS = new Set([
   "igshid",
   "mc_cid",
   "mc_eid",
-  "ref",
   "ref_src",
   "_hsenc",
   "_hsmi",

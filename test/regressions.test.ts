@@ -8,6 +8,7 @@ import { LONG_TEXT, harness } from "./helpers.js";
 import { summarize } from "../src/jobs.js";
 import { formatSearch } from "../src/mcp/format.js";
 import { EngineError, Limiter, withRetry } from "../src/util.js";
+import { canonicalUrl } from "../src/canonical.js";
 
 const plan: Plan = {
   question: "Which releases support the protocol?",
@@ -261,4 +262,8 @@ it.each([30_001, 3_600_000])("refuses Retry-After %i ms without holding a limite
   await expect(withRetry(async () => { calls++; throw error; }, { sleepFn: async (n) => { waits.push(n); } })).rejects.toBe(error);
   expect(waits).toEqual([]);
   expect(calls).toBe(1);
+});
+
+it("preserves version-selecting ref but still strips ref_src", () => {
+  expect(canonicalUrl("https://api.github.com/repos/a/b/contents/x?ref=v2&ref_src=tracking")).toBe("https://api.github.com/repos/a/b/contents/x?ref=v2");
 });

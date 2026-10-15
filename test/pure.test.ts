@@ -13,7 +13,7 @@ describe("canonicalUrl", () => {
   });
 
   it("drops tracking parameters and sorts the rest", () => {
-    expect(canonicalUrl("https://e.com/p?b=2&utm_source=x&a=1&gclid=zz&ref=tw&fbclid=1")).toBe("https://e.com/p?a=1&b=2");
+    expect(canonicalUrl("https://e.com/p?b=2&utm_source=x&a=1&gclid=zz&ref=tw&fbclid=1")).toBe("https://e.com/p?a=1&b=2&ref=tw");
     expect(canonicalUrl("https://e.com/p?utm_medium=m")).toBe("https://e.com/p");
   });
 
