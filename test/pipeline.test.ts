@@ -152,6 +152,14 @@ const goodScript: Script = async (req, call) => {
 };
 
 describe("runJob: happy path (deep)", () => {
+  it("applies the configured turn ceiling to report sessions too", async () => {
+    const s = setup({ script: goodScript });
+    s.config.maxTurns = 2;
+    expect(await runJob(s.deps, s.job)).toBe("completed");
+    expect(s.runner.calls.find((r) => r.role === "report")!.maxTurns).toBe(2);
+    expect(s.runner.calls.every((r) => r.maxTurns <= 2)).toBe(true);
+  });
+
   it("waits for a surviving segment before finalizing a fatal parallel failure", async () => {
     let release!: () => void;
     let finished!: () => void;

@@ -323,7 +323,7 @@ export async function runJob(deps: PipelineDeps, job: JobRow): Promise<JobOutcom
       prompt: reportPrompt({ plan, state: claudeCapReached ? "partial: Claude usage cap reached" : "completed" }),
       tools: buildToolset("report", { core, store, jobId: job.id }),
       outputSchema: jsonSchemaOf(NarrativeSchema),
-      maxTurns: REPORT_TURNS,
+      maxTurns: Math.min(config.maxTurns, REPORT_TURNS),
     });
     const parsed = NarrativeSchema.safeParse(res.structured);
     return parsed.success ? parsed.data : undefined;
