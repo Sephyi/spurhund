@@ -121,6 +121,18 @@ export interface GapRow {
   resolvedBy: number[];
 }
 
+export interface ClaudeSessionRow {
+  id: number;
+  jobId: string;
+  role: string;
+  label: string;
+  costUsd: number;
+  turns: number;
+  subtype: string;
+  durationMs: number;
+  createdAt: string;
+}
+
 type Row = Record<string, unknown>;
 
 export class Store {
@@ -250,6 +262,17 @@ export class Store {
 
   addClaudeCost(id: string, usd: number): void {
     this.db.prepare("UPDATE jobs SET claude_cost_usd = claude_cost_usd + ? WHERE id = ?").run(usd, id);
+  }
+
+  addClaudeSession(s: Omit<ClaudeSessionRow, "id" | "createdAt">): void {
+    this.db.prepare(`INSERT INTO claude_sessions (job_id, role, label, cost_usd, turns, subtype, duration_ms, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(s.jobId, s.role, s.label, s.costUsd, s.turns, s.subtype, Math.round(s.durationMs), this.now());
+  }
+
+  listClaudeSessions(jobId: string): ClaudeSessionRow[] {
+    return this.db.prepare(`SELECT id, job_id AS jobId, role, label, cost_usd AS costUsd, turns, subtype,
+      duration_ms AS durationMs, created_at AS createdAt FROM claude_sessions WHERE job_id = ? ORDER BY id`).all(jobId) as ClaudeSessionRow[];
   }
 
   /** Moves a job to a terminal state. Returns false when it was already terminal. */

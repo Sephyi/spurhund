@@ -128,4 +128,17 @@ CREATE TABLE IF NOT EXISTS reports (
   json TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS claude_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  label TEXT NOT NULL,
+  cost_usd REAL NOT NULL,
+  turns INTEGER NOT NULL,
+  subtype TEXT NOT NULL,
+  duration_ms INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS claude_sessions_job ON claude_sessions(job_id);
 `;

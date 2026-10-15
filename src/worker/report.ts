@@ -37,6 +37,7 @@ export interface ReportJson {
   coverage: { segmentId: string; name: string; level: string; findings: number; note: string }[];
   gaps: { segment: string; description: string }[];
   closedGaps: GapRow[];
+  claudeUsageByPhase: { role: string; sessions: number; turns: number; costUsd: number }[];
   engines: { sourcesTotal: number; foundBy: Record<string, number>; singleEngineCited: Record<string, number> };
   exaRuns: { id: string; effort: string; status: string; stopReason: string | null; costUsd: number }[];
   costs: { exaUsd: number; exaByEndpoint: Record<string, number>; braveUsd: number; claudeEstimateUsd: number };
@@ -95,6 +96,14 @@ export function buildReport(store: Store, input: ReportInput): { markdown: strin
   });
 
   const claudeEstimateUsd = job.claudeCostUsd;
+  const usage = new Map<string, ReportJson["claudeUsageByPhase"][number]>();
+  for (const s of store.listClaudeSessions(job.id)) {
+    const phase = usage.get(s.role) ?? { role: s.role, sessions: 0, turns: 0, costUsd: 0 };
+    phase.sessions++;
+    phase.turns += s.turns;
+    phase.costUsd += s.costUsd;
+    usage.set(s.role, phase);
+  }
   const exaByEndpoint = store.costByEndpoint(job.id, "exa");
   const partial = job.state !== "completed" || runs.some((r) => r.stopReason === "budget_reached" || r.stopReason === "time_limit_reached");
   const partialReason =
@@ -129,6 +138,7 @@ export function buildReport(store: Store, input: ReportInput): { markdown: strin
     coverage,
     gaps: gaps.filter((g) => g.resolvedNote === null),
     closedGaps: gaps.filter((g) => g.resolvedNote !== null),
+    claudeUsageByPhase: [...usage.values()],
     engines: { sourcesTotal: enginesBySource.size, foundBy, singleEngineCited },
     exaRuns: runs.map((r) => ({ id: r.planRunId, effort: r.effort, status: r.status, stopReason: r.stopReason, costUsd: r.costUsd })),
     costs: { exaUsd: stats.exaCostUsd, exaByEndpoint, braveUsd: stats.braveCostUsd, claudeEstimateUsd },
@@ -212,6 +222,9 @@ function renderMarkdown(r: ReportJson, plan: Plan): string {
   } else L.push("None.");
   L.push("");
 
+  L.push("## Claude usage by phase", "", "| Role | Sessions | Turns | Cost estimate |", "| --- | --- | --- | --- |");
+  for (const p of r.claudeUsageByPhase) L.push(`| ${p.role} | ${p.sessions} | ${p.turns} | ${usd(p.costUsd)} |`);
+  L.push("");
   L.push("## Costs and settings", "");
   const ep = Object.entries(r.costs.exaByEndpoint).map(([e, v]) => `${e} ${usd(v)}`).join(", ");
   L.push(

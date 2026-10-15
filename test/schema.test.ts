@@ -24,6 +24,7 @@ it.each([1, 2])("migrates schema v%i to v3 and preserves existing gaps", (versio
     let sql = SCHEMA_SQL.replace(/,?\n  resolved_note TEXT/g, "").replace(/,?\n  resolved_by_json TEXT/g, "");
     if (version === 1) sql = sql.replace("  spawned_at TEXT,\n", "");
     db.exec(sql);
+    db.exec("DROP TABLE claude_sessions");
     db.pragma(`user_version = ${version}`);
     db.prepare("INSERT INTO gaps (job_id, segment, description) VALUES ('j', 's', 'original gap')").run();
     db.close();
@@ -31,6 +32,8 @@ it.each([1, 2])("migrates schema v%i to v3 and preserves existing gaps", (versio
     try {
       expect(store.listGaps("j")[0]).toMatchObject({ id: 1, description: "original gap", resolvedNote: null, resolvedBy: [] });
       expect(store.jobStats("j").gaps).toBe(1);
+      store.addClaudeSession({ jobId: "j", role: "verify", label: "verify", costUsd: 0.12, turns: 2, subtype: "success", durationMs: 10 });
+      expect(store.listClaudeSessions("j")).toHaveLength(1);
     } finally { store.close(); }
     const reopened = new Database(file);
     expect(reopened.pragma("user_version", { simple: true })).toBe(3);

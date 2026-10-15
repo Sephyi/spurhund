@@ -126,8 +126,10 @@ export async function runJob(deps: PipelineDeps, job: JobRow): Promise<JobOutcom
   const rules = sharedRules({ today, languages: plan.languages, window: plan.timeWindow });
 
   const session = async (req: Omit<RunRequest, "systemPrompt" | "signal" | "onProgress">): Promise<RunResult> => {
+    const started = Date.now();
     const res = await runner.run({ ...req, systemPrompt: rules, signal, onProgress: progress });
     store.addClaudeCost(job.id, res.costUsd);
+    store.addClaudeSession({ jobId: job.id, role: req.role, label: req.label, costUsd: res.costUsd, turns: res.turns, subtype: res.subtype, durationMs: Date.now() - started });
     if (!res.ok && !signal.aborted) event(store.getJob(job.id)?.phase ?? "working", `${req.label} ended with ${res.subtype}${res.errors.length ? `: ${res.errors.join("; ")}` : ""}`);
     return res;
   };

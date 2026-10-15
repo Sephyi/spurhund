@@ -85,6 +85,7 @@ export async function planResearch(deps: PlannerDeps, req: PlanRequest): Promise
   let previous: { plan: unknown; errors: string[] } | undefined;
 
   for (let attempt = 1; attempt <= 2; attempt++) {
+    // Planning precedes job creation; its usage is excluded from per-job session accounting.
     const result = await deps.runner.run({
       role: "planner",
       label: `planner#${attempt}`,

@@ -152,6 +152,19 @@ const goodScript: Script = async (req, call) => {
 };
 
 describe("runJob: happy path (deep)", () => {
+  it("records every Claude session and aggregates phase usage without changing the total", async () => {
+    const s = setup({ script: goodScript });
+    expect(await runJob(s.deps, s.job)).toBe("completed");
+    const sessions = s.store.listClaudeSessions(s.job.id);
+    expect(sessions.map((x) => x.label)).toEqual(s.runner.calls.map((x) => x.label));
+    expect(sessions).toHaveLength(6);
+    expect(sessions.every((x) => x.costUsd === 0.05 && x.turns === 3 && x.subtype === "success" && x.durationMs >= 0)).toBe(true);
+    expect(sessions.reduce((sum, x) => sum + x.costUsd, 0)).toBeCloseTo(s.store.getJob(s.job.id)!.claudeCostUsd);
+    const report = s.store.getReport(s.job.id)!;
+    expect(report.markdown).toContain("## Claude usage by phase");
+    expect((report.json as import("../src/worker/report.js").ReportJson).claudeUsageByPhase.find((x) => x.role === "segment")).toEqual({ role: "segment", sessions: 2, turns: 6, costUsd: 0.1 });
+  });
+
   it("runs every phase in order and produces a complete report", async () => {
     const s = setup({ script: goodScript });
     const outcome = await runJob(s.deps, s.job);
