@@ -6,6 +6,7 @@ import { buildToolset } from "../src/worker/tools.js";
 import { NarrativeSchema, mergePrompt, plannerSystem, reportPrompt, segmentPrompt } from "../src/worker/prompts.js";
 import { LONG_TEXT, harness } from "./helpers.js";
 import { summarize } from "../src/jobs.js";
+import { formatSearch } from "../src/mcp/format.js";
 
 const plan: Plan = {
   question: "Which releases support the protocol?",
@@ -129,4 +130,44 @@ it("separates answer requirements from unverified calibration leads", () => {
 it("defaults the Claude job cap to three dollars and rejects invalid caps", () => {
   expect(loadConfig({}).claudeMaxUsdPerJob).toBe(3);
   for (const value of ["0", "-1", "NaN", "Infinity"]) expect(() => loadConfig({ SPURHUND_MAX_CLAUDE_USD_PER_JOB: value })).toThrow(/SPURHUND_MAX_CLAUDE_USD_PER_JOB/);
+});
+
+describe("compact worker output", () => {
+  it("returns only ten short leads to workers while preserving all user-facing results", async () => {
+    const h = harness({ engines: ["exa"], exa: { search: () => ({ results: Array.from({ length: 25 }, (_, i) => ({ url: `https://example.com/${i}`, title: `Result ${i}`, publishedDate: "2026-10-01", highlights: ["a".repeat(1000), "b".repeat(1000)] })) }) } });
+    try {
+      const out = await h.core.search({ query: "q", numResults: 25 });
+      const compact = formatSearch(out, { compact: true });
+      expect(compact.length).toBeLessThan(5000);
+      expect(compact.match(/^\d+\. /gm)).toHaveLength(10);
+      expect(compact).toContain("2026-10-01");
+      expect(compact).toContain("exa");
+      expect(compact).not.toContain("a".repeat(301));
+      expect(compact).not.toContain("b".repeat(10));
+      expect(formatSearch(out).match(/^\d+\. /gm)).toHaveLength(25);
+      expect(out.results).toHaveLength(25);
+    } finally { h.store.close(); }
+  });
+
+  it("defaults worker fetches to 6000 characters and rejects more than three URLs", async () => {
+    const h = evidenceSetup();
+    try {
+      const urls = Array.from({ length: 4 }, (_, i) => `https://example.com/${i}`);
+      h.core.seedUserUrls(urls.join(" "));
+      const result = await h.call("segment", "fetch", { urls });
+      expect(result.isError).toBe(true);
+      await h.call("segment", "fetch", { urls: urls.slice(0, 3) });
+      expect(h.exaClient.getContents.mock.calls[0]![1]).toEqual({ text: { maxCharacters: 6000 } });
+    } finally { h.store.close(); }
+  });
+
+  it("keeps each finding to one line plus sources, including its verification note", async () => {
+    const h = evidenceSetup();
+    try {
+      const id = h.store.addFinding({ jobId: h.jobId, segment: "releases", claim: "A claim\nwith extra lines", sourceIds: [], sourceKind: "primary", evidence: "snippet" });
+      h.store.setVerification(id, "unverified", "A note\nwith extra lines");
+      const tool = buildToolset("report", { core: h.core, store: h.store, jobId: h.jobId })[0]!;
+      expect((await tool.handler({})).text.split("\n")).toHaveLength(3);
+    } finally { h.store.close(); }
+  });
 });

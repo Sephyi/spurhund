@@ -77,7 +77,9 @@ function describeFinding(f: FindingRow, engines: Map<number, string[]>, sources:
     const state = s.readStatus === "unread" || s.readStatus === "not_read" || jobFetched(id) ? s.readStatus : "unread";
     return `${s.url} [${state}]`;
   });
-  return `#${f.id} [${f.segment}] (${flags}) ${f.claim}\n    sources: ${urls.join(" | ")}${f.verificationNote ? `\n    note: ${f.verificationNote}` : ""}`;
+  const claim = f.claim.replace(/\s+/g, " ");
+  const note = f.verificationNote ? `; note: ${f.verificationNote.replace(/\s+/g, " ")}` : "";
+  return `#${f.id} [${f.segment}] (${flags}) ${claim}${note}\n    sources: ${urls.join(" | ")}`;
 }
 
 export function buildToolset(role: Role, ctx: ToolContext): ToolSpec[] {
@@ -104,17 +106,17 @@ export function buildToolset(role: Role, ctx: ToolContext): ToolSpec[] {
       const engines = ctx.engines?.length ? (a.engines?.length ? a.engines.filter((e) => ctx.engines!.includes(e)) : ctx.engines) : a.engines;
       if (engines && engines.length === 0) return { isError: true, text: `This segment is limited to: ${ctx.engines!.join(", ")}.` };
       const out = await core.search({ query: a.query, objective: a.objective, numResults: a.num_results, engines, country: a.country, lang: a.lang, from: a.from, to: a.to });
-      return { text: formatSearch(out) };
+      return { text: formatSearch(out, { compact: true }) };
     },
   );
 
   const fetch = define(
     "fetch",
-    "Read up to 10 pages. Each is READ, TRUNCATED or NOT_READ. NOT_READ pages (empty, script shell, wall, error) must not be cited as read. " +
+    "Read up to 3 pages, 6000 characters each by default. Each is READ, TRUNCATED or NOT_READ. NOT_READ pages (empty, script shell, wall, error) must not be cited as read. " +
       "Pages you already read are served from cache; do not fetch the same URL again.",
     {
-      urls: z.array(z.string().url()).min(1).max(10),
-      max_characters: z.number().int().min(1000).max(60_000).default(12_000),
+      urls: z.array(z.string().url()).min(1).max(3),
+      max_characters: z.number().int().min(1000).max(60_000).default(6000),
     },
     true,
     async (a) => ({ text: formatFetch(await core.fetch({ urls: a.urls, maxCharacters: a.max_characters })) }),

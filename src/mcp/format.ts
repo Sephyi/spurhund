@@ -6,17 +6,21 @@ const SNIPPETS_PER_RESULT = 3;
 
 const usd = (n: number) => `$${n.toFixed(4)}`;
 
-export function formatSearch(out: SearchOutput): string {
+export function formatSearch(out: SearchOutput, opts: { compact?: boolean } = {}): string {
   const engines = out.engines
     .map((e) => (e.ok ? `${e.engine} ok (${e.count})` : `${e.engine} FAILED (${e.error})`))
     .join(", ");
   const lines = [`${out.results.length} results. Engines: ${engines}. Cost ${usd(out.costUsd)}.`];
   if (out.redactions) lines.push(`Note: ${out.redactions} secret(s) or configured term(s) were removed from the query before sending.`);
-  out.results.forEach((r, i) => {
+  const results = opts.compact ? out.results.slice(0, 10) : out.results;
+  results.forEach((r, i) => {
     const via = r.foundBy.map((f) => `${f.engine}#${f.rank}`).join(", ");
     const date = r.publishedDate ? ` (${r.publishedDate.slice(0, 10)})` : "";
     lines.push("", `${i + 1}. ${r.title || r.url}${date}`, `   ${r.url}  [${via}]`);
-    for (const s of r.snippets.slice(0, SNIPPETS_PER_RESULT)) lines.push(`   - ${clip(s.replace(/\s+/g, " "), SNIPPET_CHARS)}`);
+    for (const s of r.snippets.slice(0, opts.compact ? 1 : SNIPPETS_PER_RESULT)) {
+      const text = s.replace(/\s+/g, " ");
+      lines.push(`   - ${opts.compact ? text.slice(0, 300) : clip(text, SNIPPET_CHARS)}`);
+    }
   });
   return lines.join("\n");
 }
