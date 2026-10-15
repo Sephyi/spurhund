@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { afterEach, describe, expect, it } from "vitest";
@@ -36,6 +37,19 @@ async function startServer(extraEnv: Record<string, string> = {}) {
 }
 
 describe("spurhund serve (real stdio process)", () => {
+  it("worker startup logs to stderr without creating a second worker.log", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "spurhund-worker-log-"));
+    cleanup.push(() => fs.rmSync(home, { recursive: true, force: true }));
+    const child = spawnSync(process.execPath, [...LAUNCH, "worker", "--job", "job_000000000000"], {
+      env: { PATH: process.env.PATH ?? "", HOME: home, SPURHUND_HOME: home, CLAUDE_CODE_OAUTH_TOKEN: "fake-offline-token" },
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+    expect(child.status).toBe(0);
+    expect(child.stderr).toContain("EXA_API_KEY is not set");
+    expect(fs.existsSync(path.join(home, "logs", "worker.log"))).toBe(false);
+  });
+
   it("boots without API keys, lists its tools and explains what is missing", async () => {
     const { client, home, stderr } = await startServer();
     const { tools } = await client.listTools();

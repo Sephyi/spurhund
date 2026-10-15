@@ -65,7 +65,7 @@ async function main(argv: string[]): Promise<number> {
   }
 
   const config = loadConfig();
-  const log = createLogger(config.logLevel, { dir: config.logsDir, name: command === "serve" ? "server" : command });
+  const log = createLogger(config.logLevel, { dir: command === "worker" ? undefined : config.logsDir, name: command === "serve" ? "server" : command });
   const out = (s: string) => process.stdout.write(`${s}\n`);
 
   switch (command) {
