@@ -3,7 +3,7 @@ import { loadConfig } from "../src/config.js";
 import type { Plan } from "../src/worker/plan.js";
 import { buildReport } from "../src/worker/report.js";
 import { buildToolset } from "../src/worker/tools.js";
-import { NarrativeSchema, mergePrompt, reportPrompt } from "../src/worker/prompts.js";
+import { NarrativeSchema, mergePrompt, plannerSystem, reportPrompt, segmentPrompt } from "../src/worker/prompts.js";
 import { LONG_TEXT, harness } from "./helpers.js";
 import { summarize } from "../src/jobs.js";
 
@@ -116,4 +116,12 @@ it("asks for one short prose summary without duplicate takeaways", () => {
   const h = evidenceSetup();
   try { expect(h.report().json).not.toHaveProperty("keyTakeaways"); }
   finally { h.store.close(); }
+});
+
+it("separates answer requirements from unverified calibration leads", () => {
+  expect(plannerSystem()).toContain("Never a candidate answer, number or date");
+  expect(plannerSystem()).toContain("Unverified lead:");
+  const prompt = segmentPrompt({ plan: { ...plan, notes: "Unverified lead: release candidate" }, segmentId: "releases", depth: "standard" });
+  expect(prompt).toContain("Plan notes are unverified leads; confirm or refute them from sources, do not assume them.");
+  expect(prompt).toContain("Unverified lead: release candidate");
 });
