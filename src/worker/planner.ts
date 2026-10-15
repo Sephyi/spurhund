@@ -63,6 +63,10 @@ export async function planResearch(deps: PlannerDeps, req: PlanRequest): Promise
 
   const depth: Depth = req.depth ?? "standard";
   if (!DEPTHS.includes(depth)) throw new PlanError(`depth must be one of ${DEPTHS.join(", ")}`);
+  // SPURHUND_EXA_MAX_USD_PER_JOB is a ceiling for every entry point (MCP and CLI), not just a default.
+  if (req.maxExaUsd !== undefined && req.maxExaUsd > config.exaMaxUsdPerJob + 1e-9) {
+    throw new PlanError(`max_exa_usd $${req.maxExaUsd.toFixed(2)} is above the configured ceiling of $${config.exaMaxUsdPerJob.toFixed(2)} (SPURHUND_EXA_MAX_USD_PER_JOB).`);
+  }
   const maxExaUsd = req.maxExaUsd ?? config.exaMaxUsdPerJob;
   const extraLanguages = (req.languages ?? []).map((l) => l.toLowerCase()).filter((l) => l !== "en" && l !== "de");
   const today = (deps.today?.() ?? new Date()).toISOString().slice(0, 10);
@@ -135,7 +139,8 @@ export async function planResearch(deps: PlannerDeps, req: PlanRequest): Promise
       continue;
     }
 
-    const planId = store.createPlan({ question: plan.question, depth, plan, worstCaseUsd: check.worstCase.totalExaUsd, maxExaUsd });
+    // The row keeps the user's own wording: the plan's question is the planner's rewrite and may drop URLs.
+    const planId = store.createPlan({ question: req.question, depth, plan, worstCaseUsd: check.worstCase.totalExaUsd, maxExaUsd });
     return { planId, plan, depth, maxExaUsd, worstCase: check.worstCase, text: formatPlan(plan, depth, check.worstCase, maxExaUsd, config.claudeMaxUsdPerJob) };
   }
 

@@ -154,11 +154,14 @@ export class Core {
     }
 
     const merged = mergeResults(lists);
-    const results: SearchedResult[] = merged.map((m) => {
-      const sourceId = store.upsertSource({ url: m.url, title: m.title, publishedDate: m.publishedDate });
-      for (const f of m.foundBy) store.addHit({ sourceId, jobId: this.deps.jobId, engine: f.engine, rank: f.rank, query });
-      return { ...m, sourceId };
-    });
+    // One transaction: one WAL commit for all sources and hits of this search.
+    const results: SearchedResult[] = store.transaction(() =>
+      merged.map((m) => {
+        const sourceId = store.upsertSource({ url: m.url, title: m.title, publishedDate: m.publishedDate });
+        for (const f of m.foundBy) store.addHit({ sourceId, jobId: this.deps.jobId, engine: f.engine, rank: f.rank, query });
+        return { ...m, sourceId };
+      }),
+    );
 
     if (!reports.some((r) => r.ok)) {
       throw new NoEngineError(`All engines failed: ${reports.map((r) => `${r.engine}: ${r.error}`).join("; ")}`);
@@ -290,14 +293,17 @@ export class Core {
           );
           continue;
         }
-        // Highlights are claim-specific and must never satisfy a later full-text cache lookup.
-        store.saveFetch(sourceId, { readStatus: page.status, text: page.text, maxChars: claim ? 0 : maxChars });
+        // Highlights are claim-specific: never stored, so they cannot replace a page read or count as one.
+        // A shorter copy (a refetch with a smaller limit) never replaces a longer stored one either.
+        const downgrade = page.status === "truncated" && previous?.text && (previous.readStatus === "read" || previous.readStatus === "truncated") && (page.text?.length ?? 0) < previous.text.length;
+        if (!claim && !downgrade) store.saveFetch(sourceId, { readStatus: page.status, text: page.text, maxChars });
         out.set(page.url, { ...page, sourceId, cached: false });
       }
     }
     if (jobId) {
       // Fetching a URL counts as having read it in this job, even when it came from the cache.
-      for (const p of out.values()) if (p.status !== "not_read") store.addHit({ sourceId: p.sourceId, jobId, engine: "fetch", rank: 0 });
+      // Claim highlights are not a read of the page and leave no fetch hit.
+      if (!claim) for (const p of out.values()) if (p.status !== "not_read") store.addHit({ sourceId: p.sourceId, jobId, engine: "fetch", rank: 0 });
     }
     return { pages: urls.map((u) => out.get(u)!), costUsd };
   }
@@ -364,8 +370,15 @@ export class Core {
         }
         run = found;
       }
+      try {
+        store.upsertExaRun({ id: run.id, jobId, planRunId, effort: req.effort, status: run.status });
+      } catch (err) {
+        // The run exists but could not be recorded: end it, and keep its worst case charged.
+        reservation?.settle(worstCase);
+        await exa.agentEnd(run.id, req.effort).catch(() => undefined);
+        throw err;
+      }
       this.runs.set(run.id, { effort: req.effort, worstCase, reservation: reservation ?? { settle() {}, release() {} }, planRunId });
-      store.upsertExaRun({ id: run.id, jobId, planRunId, effort: req.effort, status: run.status });
       if (isTerminalRun(run)) this.persistRun(run);
       return run;
     } catch (err) {

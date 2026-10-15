@@ -5,6 +5,7 @@ import type { Core } from "../core.js";
 import type { FindingRow, SourceRow, Store, Verification } from "../db/store.js";
 import { ENGINE_IDS, type EngineId } from "../config.js";
 import { formatFetch, formatSearch } from "../mcp/format.js";
+import { isoDate } from "../mcp/server.js";
 import { clip, errorMessage } from "../util.js";
 
 export interface ToolOutput {
@@ -33,6 +34,10 @@ export interface ToolContext {
 }
 
 const LIST_PAGE = 60;
+/** Smaller pages while verifying: that list is re-read from the start after each batch. */
+const UNVERIFIED_PAGE = 15;
+/** Combined page text in one worker fetch result. */
+const WORKER_FETCH_BUDGET = 30_000;
 
 function define<S extends z.ZodRawShape>(
   name: string,
@@ -59,7 +64,6 @@ function define<S extends z.ZodRawShape>(
   };
 }
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 function engineLabel(engines: string[] | undefined): string {
   return engines?.length ? [...engines].sort().join("+") : "none";
@@ -116,11 +120,11 @@ export function buildToolset(role: Role, ctx: ToolContext): ToolSpec[] {
       "Pages you already read are served from cache; do not fetch the same URL again.",
     {
       urls: z.array(z.string().url()).min(1).max(3),
-      max_characters: z.number().int().min(1000).max(60_000).default(6000),
+      max_characters: z.number().int().min(1000).max(15_000).default(6000),
       ...(role === "verify" ? { claim: z.string().min(1).max(1200).optional().describe("Fetch concise claim-specific highlights instead of full text. Counts as TRUNCATED, never a full-page read.") } : {}),
     },
     true,
-    async (a) => ({ text: formatFetch(await core.fetch({ urls: a.urls, maxCharacters: a.max_characters, claim: typeof a.claim === "string" ? a.claim : undefined })) }),
+    async (a) => ({ text: formatFetch(await core.fetch({ urls: a.urls, maxCharacters: a.max_characters, claim: typeof a.claim === "string" ? a.claim : undefined }), WORKER_FETCH_BUDGET) }),
   );
 
   const recordFinding = define(
@@ -190,7 +194,7 @@ export function buildToolset(role: Role, ctx: ToolContext): ToolSpec[] {
       if (a.only_unverified) all = all.filter((f) => f.verification === "unchecked");
       // With only_unverified the list shrinks as findings get checked, so an offset would skip some.
       const offset = a.only_unverified ? 0 : a.offset;
-      const page = all.slice(offset, offset + LIST_PAGE);
+      const page = all.slice(offset, offset + (a.only_unverified ? UNVERIFIED_PAGE : LIST_PAGE));
       const engines = store.enginesBySource(jobId);
       const sources = new Map<number, SourceRow>();
       for (const f of page) for (const id of f.sourceIds) if (!sources.has(id)) sources.set(id, store.getSource(id)!);
@@ -282,13 +286,19 @@ export function buildToolset(role: Role, ctx: ToolContext): ToolSpec[] {
       const out = run.output as { text?: string | null; structured?: unknown; grounding?: unknown } | null;
       // Register the pages the run cited, so findings can cite them.
       const cited = new Set<string>();
+      // Compact grounding: the field each citation supports and its URLs, not the full citation objects.
+      const grounding: { field?: string; urls: string[] }[] = [];
       if (Array.isArray(out?.grounding)) {
-        for (const entry of out.grounding as { citations?: { url?: string }[] }[]) {
-          for (const c of entry.citations ?? []) if (typeof c.url === "string" && /^https?:\/\//i.test(c.url)) cited.add(c.url);
+        for (const entry of out.grounding as { field?: string; citations?: { url?: string }[] }[]) {
+          const urls = (entry.citations ?? []).map((c) => c.url).filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
+          for (const u of urls) cited.add(u);
+          grounding.push({ field: entry.field, urls });
         }
       }
       for (const sourceId of core.resolveSources([...cited])) store.addHit({ sourceId, jobId, engine: "exa-agent", rank: 0, query: run.planRunId });
-      const body = out ? JSON.stringify({ text: out.text, structured: out.structured, grounding: out.grounding }, null, 1) : "(no output)";
+      // Structured output when there is one (the text usually restates it), otherwise the text.
+      const answer = out?.structured != null ? { structured: out.structured } : { text: out?.text ?? null };
+      const body = out ? JSON.stringify({ ...answer, grounding }, null, 1) : "(no output)";
       return { text: `Exa run ${run.planRunId}: ${run.status}${run.stopReason ? ` (${run.stopReason})` : ""}, cost $${run.costUsd.toFixed(3)}\n${clip(body, 40_000)}` };
     },
   );

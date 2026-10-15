@@ -346,7 +346,7 @@ describe("runJob: Exa Agent runs", () => {
       script: async (req, call, n) => {
         if (req.role === "merge") {
           const out = await call("exa_run_output", { run_id: "crates" });
-          expect(out.text).toContain("Two crates");
+          expect(out.text).toContain("ml-kem"); // structured output wins over the restating text
           const rec = await call("record_finding", { claim: "The ml-kem crate implements FIPS 203 KEM", sources: ["https://crates.io/crates/ml-kem"], source_kind: "primary" });
           expect(rec.isError).toBeUndefined();
           return { structured: { coverage: [], missingAreas: [] } };
@@ -539,11 +539,21 @@ describe("workerMain", () => {
 
   it("falls back to the next waiting job when the requested one is already taken", async () => {
     const { s, a, b } = twoJobs();
+    // setup()'s job and job a are both working, so this worker needs a third slot to take b.
+    s.deps.config = { ...s.deps.config, maxConcurrentJobs: 3 };
     s.store.claimJob(a, 12345); // another worker owns it
     const ran = await workerMain(s.deps, a);
     expect(ran).toBe(1);
     expect(s.store.getJob(b)!.state).toBe("completed");
     expect(s.store.getJob(a)!.state).toBe("working");
+  });
+
+  it("does not take another job when the concurrency limit is already used", async () => {
+    const { s, a, b } = twoJobs();
+    s.deps.config = { ...s.deps.config, maxConcurrentJobs: 2 };
+    s.store.claimJob(a, 12345); // with setup()'s job, two jobs are working
+    expect(await workerMain(s.deps, a)).toBe(0);
+    expect(s.store.getJob(b)!.state).toBe("submitted");
   });
 
   it("stops after the current job when told to stop", async () => {

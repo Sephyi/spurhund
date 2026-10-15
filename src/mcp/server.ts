@@ -10,7 +10,7 @@ import { fail, formatFetch, formatSearch, ok } from "./format.js";
 export const SERVER_NAME = "spurhund";
 export const SERVER_VERSION = "0.1.0";
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use YYYY-MM-DD");
+export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use YYYY-MM-DD");
 
 export const searchInput = z.object({
   query: z.string().min(1).max(2000).describe("Describe the page you want in a full phrase, not keywords."),
@@ -67,8 +67,8 @@ export function registerSearchTools(server: McpServer, ctx: McpContext): void {
           to: args.to,
         });
         return ok(formatSearch(out), {
-          // Snippets are already in the text; keep the structured copy short.
-          results: out.results.map(({ sourceId: _sourceId, snippets, ...r }) => ({ ...r, snippets: snippets.slice(0, 2).map((x) => x.slice(0, 300)) })),
+          // Snippets are in the text; clients may pass both parts to the model, so do not repeat them.
+          results: out.results.map(({ sourceId: _sourceId, snippets: _snippets, ...r }) => r),
           engines: out.engines,
           cost_usd: out.costUsd,
           redactions: out.redactions,

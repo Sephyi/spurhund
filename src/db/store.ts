@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -232,12 +231,25 @@ export class Store {
     return (this.db.prepare("SELECT * FROM jobs WHERE state = ? ORDER BY created_at, rowid").all(state) as Row[]).map(toJob);
   }
 
-  /** Atomically takes the oldest submitted job for this worker. */
-  claimNextSubmitted(pid: number): JobRow | undefined {
+  /**
+   * Atomically takes the oldest submitted job for this worker. With a limit, a worker that already
+   * finished its own job only continues while there is capacity, and leaves jobs that were just
+   * spawned for another worker to that worker.
+   */
+  claimNextSubmitted(pid: number, limit?: { max: number; graceMs: number }): JobRow | undefined {
     const tx = this.db.transaction((): string | undefined => {
-      const next = this.db.prepare("SELECT id FROM jobs WHERE state = 'submitted' ORDER BY created_at, rowid LIMIT 1").get() as
-        | { id: string }
-        | undefined;
+      const cutoff = limit ? new Date(this.clock().getTime() - limit.graceMs).toISOString() : "";
+      if (limit) {
+        const busy = (
+          this.db
+            .prepare("SELECT COUNT(*) AS n FROM jobs WHERE state = 'working' OR (state = 'submitted' AND spawned_at IS NOT NULL AND spawned_at > ?)")
+            .get(cutoff) as { n: number }
+        ).n;
+        if (busy >= limit.max) return undefined;
+      }
+      const next = this.db
+        .prepare(`SELECT id FROM jobs WHERE state = 'submitted'${limit ? " AND (spawned_at IS NULL OR spawned_at <= ?)" : ""} ORDER BY created_at, rowid LIMIT 1`)
+        .get(...(limit ? [cutoff] : [])) as { id: string } | undefined;
       if (!next) return undefined;
       const upd = this.db
         .prepare("UPDATE jobs SET state = 'working', phase = 'starting', pid = ?, started_at = ? WHERE id = ? AND state = 'submitted'")
@@ -262,6 +274,11 @@ export class Store {
 
   addClaudeCost(id: string, usd: number): void {
     this.db.prepare("UPDATE jobs SET claude_cost_usd = claude_cost_usd + ? WHERE id = ?").run(usd, id);
+  }
+
+  /** Runs fn in one transaction (nested calls become savepoints). */
+  transaction<T>(fn: () => T): T {
+    return this.db.transaction(fn)();
   }
 
   addClaudeSession(s: Omit<ClaudeSessionRow, "id" | "createdAt">): void {
@@ -410,10 +427,9 @@ export class Store {
   }
 
   saveFetch(sourceId: number, f: { readStatus: ReadStatus; text: string | null; maxChars: number }): void {
-    const hash = f.text ? createHash("sha256").update(f.text).digest("hex") : null;
     this.db
-      .prepare("UPDATE sources SET read_status = ?, text = ?, fetch_max_chars = ?, content_hash = ?, fetched_at = ? WHERE id = ?")
-      .run(f.readStatus, f.text, f.maxChars, hash, this.now(), sourceId);
+      .prepare("UPDATE sources SET read_status = ?, text = ?, fetch_max_chars = ?, fetched_at = ? WHERE id = ?")
+      .run(f.readStatus, f.text, f.maxChars, this.now(), sourceId);
   }
 
   /**
@@ -603,6 +619,15 @@ export class Store {
         createdAt: this.now(),
         finishedAt: r.finished ? this.now() : null,
       });
+  }
+
+  /** Unfinished Exa runs of jobs that have ended, with the job's worker pid and plan. */
+  listOpenRunsOfEndedJobs(): (ExaRunRow & { pid: number | null; planId: string })[] {
+    const rows = this.db
+      .prepare(`SELECT exa_runs.*, jobs.pid AS job_pid, jobs.plan_id AS job_plan_id FROM exa_runs JOIN jobs ON jobs.id = exa_runs.job_id
+        WHERE exa_runs.finished_at IS NULL AND jobs.state IN ('completed', 'failed', 'canceled') ORDER BY exa_runs.created_at`)
+      .all() as Row[];
+    return rows.map((r) => ({ ...toExaRun(r), pid: r.job_pid as number | null, planId: r.job_plan_id as string }));
   }
 
   getExaRun(id: string): ExaRunRow | undefined {

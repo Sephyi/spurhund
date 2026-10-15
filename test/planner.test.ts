@@ -166,3 +166,17 @@ describe("planResearch", () => {
     expect(store.listJobs()).toEqual([]);
   });
 });
+
+describe("planResearch: final batch", () => {
+  it("rejects an Exa cap above SPURHUND_EXA_MAX_USD_PER_JOB", async () => {
+    const { d } = deps(new ScriptedPlanner([{ structured: validPlan }]), {}, { CLAUDE_CODE_OAUTH_TOKEN: "t", SPURHUND_EXA_MAX_USD_PER_JOB: "5" });
+    await expect(planResearch(d, { question: "Which Rust crates implement ML-KEM?", maxExaUsd: 100 })).rejects.toThrow(/above the configured ceiling/);
+  });
+
+  it("stores the user's own question, so URLs the planner dropped can still be seeded", async () => {
+    const { d, store } = deps(new ScriptedPlanner([{ structured: validPlan }]));
+    const question = "Which Rust crates implement ML-KEM? Start with https://crates.io/search?q=ml-kem";
+    const r = await planResearch(d, { question });
+    expect(store.getPlan(r.planId)!.question).toBe(question);
+  });
+});

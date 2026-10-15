@@ -12,13 +12,15 @@ export interface Services {
 /** Wires the planner and job controller to a runtime. `runner` is injectable for tests. */
 export function buildServices(
   rt: Runtime,
-  opts: { runner?: AgentRunner; spawnWorker?: (jobId: string) => void } = {},
+  /** endOrphanedRuns: only for the long-lived server; a CLI command closes the DB before a cleanup pass could finish. */
+  opts: { runner?: AgentRunner; spawnWorker?: (jobId: string) => void; endOrphanedRuns?: boolean } = {},
 ): Services {
   const runner = opts.runner ?? new ClaudeAgentRunner(rt.config, rt.log);
   const jobs = new JobController({
     config: rt.config,
     store: rt.store,
     log: rt.log,
+    exa: opts.endOrphanedRuns ? rt.exa : undefined,
     spawnWorker: opts.spawnWorker ?? ((jobId) => spawnWorkerProcess(rt.config, jobId)),
   });
   const plan = (req: PlanRequest) =>

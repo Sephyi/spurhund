@@ -6,6 +6,7 @@ import { DEPTHS } from "../worker/plan.js";
 import type { PlanRequest, PlanResult } from "../worker/planner.js";
 import { errorMessage } from "../util.js";
 import { fail, ok } from "./format.js";
+import { isoDate } from "./server.js";
 
 export interface JobServices {
   plan: (req: PlanRequest) => Promise<PlanResult>;
@@ -13,7 +14,6 @@ export interface JobServices {
   store: Store;
 }
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use YYYY-MM-DD");
 const jobId = z.string().regex(/^job_[0-9a-f]{12}$/, "a job id looks like job_0123456789ab");
 
 export const exaCapInput = (max = 100) => z.number().min(0.1).max(Math.min(max, 100)).optional();
@@ -61,7 +61,8 @@ export function registerJobTools(server: McpServer, svc: JobServices): void {
           depth: r.depth,
           max_exa_usd: r.maxExaUsd,
           worst_case: r.worstCase,
-          plan: r.plan,
+          // The plan itself is in the text; it is stored under plan_id.
+          segments: r.plan.segments.map((s) => s.id),
         });
       } catch (err) {
         return fail(errorMessage(err));

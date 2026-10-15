@@ -198,12 +198,12 @@ describe("15: the verifier's paging cannot skip findings", () => {
     for (let i = 0; i < 100; i++) h.store.addFinding({ jobId: j, segment: "s", claim: `claim number ${i}`, sourceIds: [], sourceKind: "primary", evidence: "snippet" });
     const list = tool("list_findings", { core: h.core, store: h.store, jobId: j });
     const first = await list.handler({ only_unverified: true });
-    expect(first.text).toMatch(/^100 finding\(s\) still unchecked; showing the first 60\./);
+    expect(first.text).toMatch(/^100 finding\(s\) still unchecked; showing the first 15\./);
     for (const m of first.text.matchAll(/^#(\d+) /gm)) h.store.setVerification(Number(m[1]), "verified", "ok");
-    // The old behaviour: a follow-up with offset 60 returned nothing and left 40 unchecked.
-    const second = await list.handler({ only_unverified: true, offset: 60 });
-    expect(second.text).toMatch(/^40 finding\(s\) still unchecked; showing the first 40\./);
-    expect([...second.text.matchAll(/^#(\d+) /gm)]).toHaveLength(40);
+    // The old behaviour: a follow-up with an offset skipped findings that were still unchecked.
+    const second = await list.handler({ only_unverified: true, offset: 15 });
+    expect(second.text).toMatch(/^85 finding\(s\) still unchecked; showing the first 15\./);
+    expect([...second.text.matchAll(/^#(\d+) /gm)]).toHaveLength(15);
   });
 });
 

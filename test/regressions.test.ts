@@ -175,30 +175,47 @@ describe("compact worker output", () => {
   });
 });
 
-it("requests claim highlights without text, marks them truncated, then really fetches full text", async () => {
+it("serves claim highlights without storing them, so they never replace a full read or count as one", async () => {
   const h = harness({ job: { cap: 5 }, engines: ["exa"], exa: { getContents: (urls, options) => ({ results: urls.map((url) => ({ url, ...(options.highlights ? { highlights: ["The release supports TLS."] } : { text: LONG_TEXT }) })) }) } });
   const jobId = h.core.jobId!;
   const url = "https://example.com/releases";
   h.core.seedUserUrls(url);
   const sourceId = h.store.getSourceByUrl(url)!.id;
-  h.store.saveFetch(sourceId, { readStatus: "read", text: LONG_TEXT, maxChars: 6000 });
+  h.store.saveFetch(sourceId, { readStatus: "read", text: LONG_TEXT, maxChars: 6000 }); // read in full, e.g. by another job
   const id = h.store.addFinding({ jobId, segment: "s", claim: "The release supports TLS", sourceIds: [sourceId], sourceKind: "primary", evidence: "snippet" });
   const tools = buildToolset("verify", { core: h.core, store: h.store, jobId });
   const fetch = tools.find((t) => t.name === "fetch")!;
   try {
     const highlights = await fetch.handler({ urls: [url], claim: "Does this release support TLS?" });
-    expect(h.exaClient.getContents).toHaveBeenCalledTimes(1);
     expect(h.exaClient.getContents.mock.calls[0]![1]).toEqual({ highlights: { query: "Does this release support TLS?", maxCharacters: 6000 } });
     expect(highlights.text).toContain("TRUNCATED");
-    expect(h.store.getSource(sourceId)!.readStatus).toBe("truncated");
+    // The stored full read is untouched, and the highlights left no fetch hit for this job.
+    expect(h.store.getSource(sourceId)).toMatchObject({ readStatus: "read", text: LONG_TEXT });
+    expect(h.store.jobHasFetched(jobId, sourceId)).toBe(false);
     const checked = await tools.find((t) => t.name === "set_verification")!.handler({ finding_id: id, status: "verified", note: "Only highlights" });
     expect(checked.text).toContain("unverified");
-    expect(h.store.getFinding(id)!.evidence).toBe("fetched");
+    expect(h.store.getFinding(id)!.evidence).toBe("snippet");
+    // A real fetch afterwards is served from the intact cache and counts as this job's read.
     await fetch.handler({ urls: [url] });
-    expect(h.exaClient.getContents).toHaveBeenCalledTimes(2);
-    expect(h.store.getSource(sourceId)!.readStatus).toBe("read");
+    expect(h.exaClient.getContents).toHaveBeenCalledTimes(1);
+    expect(h.store.jobHasFetched(jobId, sourceId)).toBe(true);
     const segmentFetch = buildToolset("segment", { core: h.core, store: h.store, jobId }).find((t) => t.name === "fetch")!;
     expect(segmentFetch.shape).not.toHaveProperty("claim");
+  } finally { h.store.close(); }
+});
+
+it("never replaces a longer stored copy with a shorter truncated refetch", async () => {
+  // cacheDays 0: the stored copy is never reused, as after its TTL expired.
+  const h = harness({ job: { cap: 5 }, engines: ["exa"], cacheDays: 0, exa: { getContents: (urls) => ({ results: urls.map((url) => ({ url, text: LONG_TEXT })) }) } });
+  const full = LONG_TEXT.repeat(5);
+  const url = "https://example.com/releases";
+  h.core.seedUserUrls(url);
+  const sourceId = h.store.getSourceByUrl(url)!.id;
+  h.store.saveFetch(sourceId, { readStatus: "read", text: full, maxChars: 60_000 });
+  try {
+    const out = await h.core.fetch({ urls: [url], maxCharacters: 1000 });
+    expect(out.pages[0]!.status).toBe("truncated");
+    expect(h.store.getSource(sourceId)).toMatchObject({ readStatus: "read", text: full });
   } finally { h.store.close(); }
 });
 

@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS sources (
   read_status TEXT NOT NULL DEFAULT 'unread',
   fetch_max_chars INTEGER,
   text TEXT,
-  content_hash TEXT
+  content_hash TEXT -- unused since v3; kept to avoid a table rebuild
 );
 
 CREATE TABLE IF NOT EXISTS source_hits (

@@ -105,7 +105,11 @@ export function estimateSegmentExaSpend(depth: keyof typeof DEPTH_ESTIMATES): nu
   return e.searches * PRICES.exaSearch + e.pages * PRICES.exaPage;
 }
 
-/** Allow one maximal search and all original/extra citations per target finding. Not a phase spend cap. */
+/**
+ * Expected verification spend, not its theoretical maximum: most cited pages were already read
+ * by the segments (cache hits), so assume one search per two findings and two new page reads per
+ * finding. The ledger's hard cap still bounds the real spend.
+ */
 export function estimateVerificationExaSpend(findings: number): number {
-  return findings * (PRICES.exaSearch + (WORKER_LIMITS.searchResults + WORKER_LIMITS.findingSources + WORKER_LIMITS.verificationExtraSources) * PRICES.exaPage);
+  return findings * (PRICES.exaSearch / 2 + 2 * PRICES.exaPage);
 }

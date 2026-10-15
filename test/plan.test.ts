@@ -147,7 +147,7 @@ describe("computeWorstCase", () => {
     const wc = computeWorstCase(p, "deep");
     expect(wc.exaAgentUsd).toBeCloseTo(3.5);
     // Two segments can produce 40 findings, including the Brave-only segment.
-    const verify = 40 * (0.007 + 25 * 0.001 + 10 * 0.001);
+    const verify = 40 * (0.007 / 2 + 2 * 0.001);
     expect(wc.exaSearchUsd).toBeCloseTo(15 * 0.007 + 25 * 0.001 + 8 * 0.007 + verify);
     expect(wc.braveRequests).toBe(30);
     expect(wc.totalExaUsd).toBeCloseTo(wc.exaAgentUsd + wc.exaSearchUsd);
@@ -157,8 +157,8 @@ describe("computeWorstCase", () => {
     const findings = { standard: 12, deep: 20, exhaustive: 30 }[depth];
     const gapSearches = { standard: 0, deep: 8, exhaustive: 16 }[depth];
     const base = { standard: 8 * 0.007 + 10 * 0.001, deep: 15 * 0.007 + 25 * 0.001, exhaustive: 25 * 0.007 + 40 * 0.001 }[depth];
-    expect(computeWorstCase(plan(), depth).exaSearchUsd).toBeCloseTo(base + gapSearches * 0.007 + findings * 0.042);
-    expect(computeWorstCase(plan({ segments: [segment("brave", { engines: ["brave"] })] }), depth).totalExaUsd).toBeCloseTo(gapSearches * 0.007 + findings * 0.042);
+    expect(computeWorstCase(plan(), depth).exaSearchUsd).toBeCloseTo(base + gapSearches * 0.007 + findings * 0.0055);
+    expect(computeWorstCase(plan({ segments: [segment("brave", { engines: ["brave"] })] }), depth).totalExaUsd).toBeCloseTo(gapSearches * 0.007 + findings * 0.0055);
   });
 });
 

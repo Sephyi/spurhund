@@ -5,6 +5,7 @@ import { assertClaudeAuth, type Config } from "./config.js";
 import type { JobRow, JobStats, Store } from "./db/store.js";
 import { TERMINAL_STATES } from "./db/store.js";
 import type { Logger } from "./log.js";
+import { endOrphanedExaRuns, type OrphanExa } from "./orphans.js";
 import type { ReportJson } from "./worker/report.js";
 import { clip, errorMessage, pidAlive } from "./util.js";
 
@@ -16,6 +17,8 @@ export interface JobControllerDeps {
   spawnWorker: (jobId: string) => void;
   isAlive?: (pid: number) => boolean;
   now?: () => Date;
+  /** Ends Exa Agent runs left open by dead workers. Absent when Exa is not configured. */
+  exa?: OrphanExa;
 }
 
 export interface StartResult {
@@ -42,6 +45,7 @@ export const reportUri = (jobId: string, ext: "md" | "json") => `spurhund://repo
 
 export class JobController {
   private readonly isAlive: (pid: number) => boolean;
+  private orphanCleanup: Promise<void> | undefined;
 
   constructor(private readonly d: JobControllerDeps) {
     this.isAlive = d.isAlive ?? pidAlive;
@@ -55,7 +59,23 @@ export class JobController {
     const { store } = this.d;
     const ended = [...store.reapDeadJobs(this.isAlive), ...store.failUnclaimed(SPAWN_GRACE_MS)];
     this.dispatch();
+    this.cleanupOrphans();
     return ended;
+  }
+
+  /** Starts one background pass over orphaned Exa runs; a pass already running is reused. */
+  cleanupOrphans(): Promise<void> {
+    const exa = this.d.exa;
+    if (!exa) return Promise.resolve();
+    this.orphanCleanup ??= endOrphanedExaRuns(this.d.store, exa, this.isAlive)
+      .then((ids) => {
+        if (ids.length) this.d.log.warn(`Ended ${ids.length} Exa run(s) left open by dead workers: ${ids.join(", ")}`);
+      })
+      .catch((err) => this.d.log.error(`Exa run cleanup failed: ${errorMessage(err)}`))
+      .finally(() => {
+        this.orphanCleanup = undefined;
+      });
+    return this.orphanCleanup;
   }
 
   /** Starts a worker for each waiting job that fits under the concurrency limit. */

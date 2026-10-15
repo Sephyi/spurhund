@@ -78,7 +78,8 @@ async function main(argv: string[]): Promise<number> {
     case "serve": {
       const rt = buildRuntime(config, log);
       const core = adhocCore(rt);
-      const svc = buildServices(rt);
+      const svc = buildServices(rt, { endOrphanedRuns: true });
+      svc.jobs.reap(); // also ends Exa runs that a crashed worker left open
       const handle = serveStdio(() =>
         createMcpServer({ core }, (s) => registerJobTools(s, { plan: svc.plan, jobs: svc.jobs, store: rt.store }), { withJobs: true }),
       );

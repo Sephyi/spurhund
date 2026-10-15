@@ -121,7 +121,7 @@ export async function runJob(deps: PipelineDeps, job: JobRow): Promise<JobOutcom
   };
 
   // URLs the user wrote themselves may be fetched even though no search returned them.
-  core.seedUserUrls(`${plan.question}\n${plan.notes ?? ""}`);
+  core.seedUserUrls(`${planRow.question}\n${plan.question}\n${plan.notes ?? ""}`);
 
   const rules = sharedRules({ today, languages: plan.languages, window: plan.timeWindow });
   let claudeReserved = 0;
@@ -168,7 +168,8 @@ export async function runJob(deps: PipelineDeps, job: JobRow): Promise<JobOutcom
       tools: buildToolset("segment", { core, store, jobId: job.id, segment: segmentId, engines: plan.segments.find((x) => x.id === segmentId)?.engines }),
       maxTurns: Math.min(config.maxTurns, SEGMENT_TURNS[depth]),
     });
-    if (!res.ok && !signal.aborted) {
+    // A segment skipped by the Claude cap already has its own gap.
+    if (!res.ok && !signal.aborted && res.subtype !== "claude_cap_reached") {
       store.addGap(job.id, segmentId, `The research session for this segment ended early (${res.subtype}); coverage here may be thin.`);
     }
   };

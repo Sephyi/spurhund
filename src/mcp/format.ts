@@ -38,8 +38,8 @@ export function budgetPages<T extends { text: string | null; status: string }>(p
   );
 }
 
-export function formatFetch(out: FetchOutput): string {
-  const pages = budgetPages(out.pages);
+export function formatFetch(out: FetchOutput, budget = MAX_RESULT_TEXT): string {
+  const pages = budgetPages(out.pages, budget);
   const parts = [`${pages.length} page(s). Cost ${usd(out.costUsd)}.`];
   if (pages.some((p) => p.clipped)) parts.push(`Note: the combined text was shortened to fit one result; fetch fewer pages at a time to read more of each.`);
   for (const p of pages) {
