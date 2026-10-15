@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { DEFAULT_CLAUDE_JOB_CAP_USD, ENGINE_IDS, type EngineId } from "../config.js";
-import { AGENT_EFFORTS, agentWorstCase, estimateSegmentExaSpend, type AgentEffortName } from "../costs.js";
+import { AGENT_EFFORTS, DEPTH_ESTIMATES, PRICES, agentWorstCase, estimateSegmentExaSpend, type AgentEffortName } from "../costs.js";
 
 export const DEPTHS = ["standard", "deep", "exhaustive"] as const;
 export type Depth = (typeof DEPTHS)[number];
@@ -79,8 +79,8 @@ export function computeWorstCase(plan: Plan, depth: Depth): WorstCase {
   const exaSearchUsd = exaSegments * estimateSegmentExaSpend(depth);
   const braveSegments = plan.segments.filter((s) => s.engines.includes("brave")).length;
   // Brave is not capped by the Exa budget; estimate with the same searches-per-segment figure.
-  const braveRequests = braveSegments * (depth === "standard" ? 8 : depth === "deep" ? 15 : 25);
-  return { exaAgentUsd, exaSearchUsd, braveRequests, braveUsd: braveRequests * 0.005, totalExaUsd: exaAgentUsd + exaSearchUsd };
+  const braveRequests = braveSegments * DEPTH_ESTIMATES[depth].searches;
+  return { exaAgentUsd, exaSearchUsd, braveRequests, braveUsd: braveRequests * PRICES.braveRequest, totalExaUsd: exaAgentUsd + exaSearchUsd };
 }
 
 export interface PlanCheck {

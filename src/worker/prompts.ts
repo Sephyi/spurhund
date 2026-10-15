@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { EngineId } from "../config.js";
+import { estimateSegmentExaSpend } from "../costs.js";
 import type { Depth, Plan } from "./plan.js";
 
 export const MergeResultSchema = z.object({
@@ -61,6 +62,7 @@ export function plannerSystem(): string {
     "- Use English for technical, security, scientific and software topics. Add German only when the topic has a German or EU side. Use no other language unless the user approved it.",
     "- Exa Agent runs cost money. Use them for list building, enrichment and multi-hop verification, never for a single fact. Prefer the cheapest effort that fits: medium for one entity or standard question, high for a bounded list or multi-hop, xhigh for important wide research, auto (with a budget) for lists of unknown size. Ultra only if explicitly allowed.",
     "- You may run at most six quick searches to calibrate the plan (what exists, what the vocabulary is). You cannot open pages, and you do not research the question itself.",
+    "- Do not state a dollar total in the plan or notes; the approval output computes costs from the actual plan.",
     "- Return only the plan object. Dates are absolute YYYY-MM-DD.",
   ].join("\n");
 }
@@ -85,7 +87,7 @@ export function plannerPrompt(opts: {
     `Depth: ${opts.depth} (${segs} segments).`,
     `Available engines: ${opts.engines.join(", ")}. Exa Agent runs ${opts.exaAvailable ? "are available" : "are NOT available: use no exaRuns"}.`,
     `Allowed languages: en, de${opts.extraLanguages.length ? `, ${opts.extraLanguages.join(", ")}` : ""}.`,
-    `Worst-case Exa budget for the whole job: $${opts.maxExaUsd.toFixed(2)} (agent runs plus an allowance of about $${opts.depth === "standard" ? "0.09" : opts.depth === "deep" ? "0.13" : "0.2"} per segment for searches and page reads).`,
+    `Worst-case Exa budget for the whole job: $${opts.maxExaUsd.toFixed(2)} (agent runs plus an allowance of about $${estimateSegmentExaSpend(opts.depth).toFixed(3)} per segment for searches and page reads).`,
     `Ultra effort: ${opts.allowUltra ? "allowed if it clearly pays off" : "not allowed"}.`,
   ];
   if (opts.timeWindow?.from || opts.timeWindow?.to) parts.push(`Time window: ${opts.timeWindow.from ?? "open"} to ${opts.timeWindow.to ?? "open"}.`);

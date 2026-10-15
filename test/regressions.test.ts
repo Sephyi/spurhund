@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config.js";
-import type { Plan } from "../src/worker/plan.js";
+import { computeWorstCase, type Plan } from "../src/worker/plan.js";
 import { buildReport } from "../src/worker/report.js";
 import { buildToolset } from "../src/worker/tools.js";
-import { NarrativeSchema, mergePrompt, plannerSystem, reportPrompt, segmentPrompt } from "../src/worker/prompts.js";
+import { NarrativeSchema, mergePrompt, plannerPrompt, plannerSystem, reportPrompt, segmentPrompt } from "../src/worker/prompts.js";
 import { LONG_TEXT, harness } from "./helpers.js";
 import { summarize } from "../src/jobs.js";
 import { formatSearch } from "../src/mcp/format.js";
 import { EngineError, Limiter, withRetry } from "../src/util.js";
 import { canonicalUrl } from "../src/canonical.js";
+import { PRICES, estimateSegmentExaSpend } from "../src/costs.js";
 
 const plan: Plan = {
   question: "Which releases support the protocol?",
@@ -277,4 +278,19 @@ it("fills empty source titles and dates without overwriting real metadata", () =
     h.store.upsertSource({ url: "https://example.com/", title: "Different", publishedDate: "2026-10-02" });
     expect(h.store.getSource(id)).toMatchObject({ title: "Release notes", publishedDate: "2026-10-01" });
   } finally { h.store.close(); }
+});
+
+it("computes Brave spend from the central price rather than a duplicate literal", () => {
+  const original = PRICES.braveRequest;
+  try {
+    Object.defineProperty(PRICES, "braveRequest", { value: 0.123 });
+    const wc = computeWorstCase({ ...plan, segments: plan.segments.map((s) => ({ ...s, engines: ["brave"] })) }, "standard");
+    expect(wc.braveUsd).toBeCloseTo(wc.braveRequests * PRICES.braveRequest);
+  } finally { Object.defineProperty(PRICES, "braveRequest", { value: original }); }
+});
+
+it.each(["standard", "deep", "exhaustive"] as const)("planner gets the calculated %s allowance, not a separate price", (depth) => {
+  const prompt = plannerPrompt({ question: plan.question, depth, today: "2026-10-15", extraLanguages: [], maxExaUsd: 5, allowUltra: false, engines: ["exa"], exaAvailable: true });
+  expect(prompt).toContain(`$${estimateSegmentExaSpend(depth).toFixed(3)} per segment`);
+  expect(plannerSystem()).toContain("Do not state a dollar total");
 });
