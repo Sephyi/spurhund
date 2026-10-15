@@ -261,10 +261,12 @@ export async function runJob(deps: PipelineDeps, job: JobRow): Promise<JobOutcom
 
   const execute = async () => {
     const limiter = new Limiter(SEGMENT_CONCURRENCY);
-    await Promise.all([
+    const settled = await Promise.allSettled([
       ...plan.exaRuns.map((r) => runExaRun(r)),
       ...plan.segments.map((s) => limiter.run(() => runSegment(s.id))),
     ]);
+    const rejected = settled.find((r) => r.status === "rejected");
+    if (rejected?.status === "rejected") throw rejected.reason;
   };
 
   const merge = async (): Promise<MergeResult | undefined> => {

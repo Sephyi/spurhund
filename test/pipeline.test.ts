@@ -152,6 +152,33 @@ const goodScript: Script = async (req, call) => {
 };
 
 describe("runJob: happy path (deep)", () => {
+  it("waits for a surviving segment before finalizing a fatal parallel failure", async () => {
+    let release!: () => void;
+    let finished!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const done = new Promise<void>((resolve) => { finished = resolve; });
+    const s = setup({ script: async (req, call, n) => {
+      if (req.label === "segment:openssl") throw new Error("fatal segment failure");
+      await gate;
+      const result = await goodScript(req, call, n);
+      finished();
+      return result;
+    } });
+    let settled = false;
+    const running = runJob(s.deps, s.job).then((outcome) => { settled = true; return outcome; });
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(settled).toBe(false);
+    } finally {
+      release();
+      await running;
+      await done;
+    }
+    expect(await running).toBe("failed");
+    expect(s.store.listClaudeSessions(s.job.id).map((x) => x.label)).toEqual(["segment:rustls"]);
+    expect((s.store.getReport(s.job.id)!.json as { findings: unknown[] }).findings).toHaveLength(1);
+  });
+
   it("skips verification after usage exhaustion but writes a partial report with a reserve", async () => {
     const s = setup({ depth: "standard", script: async (req, call, n) => ({ ...await goodScript(req, call, n), costUsd: 2 }) });
     s.config.claudeMaxUsdPerJob = 3;
