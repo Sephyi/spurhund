@@ -88,6 +88,7 @@ export function plannerPrompt(opts: {
     `Available engines: ${opts.engines.join(", ")}. Exa Agent runs ${opts.exaAvailable ? "are available" : "are NOT available: use no exaRuns"}.`,
     `Allowed languages: en, de${opts.extraLanguages.length ? `, ${opts.extraLanguages.join(", ")}` : ""}.`,
     `Worst-case Exa budget for the whole job: $${opts.maxExaUsd.toFixed(2)} (agent runs plus an allowance of about $${estimateSegmentExaSpend(opts.depth).toFixed(3)} per segment for searches and page reads).`,
+    "The approval estimate also reserves gap searches and verification searches/page reads based on the finding targets. Fewer segments reduce those allowances too. These are planning estimates, not per-phase hard limits.",
     `Ultra effort: ${opts.allowUltra ? "allowed if it clearly pays off" : "not allowed"}.`,
   ];
   if (opts.timeWindow?.from || opts.timeWindow?.to) parts.push(`Time window: ${opts.timeWindow.from ?? "open"} to ${opts.timeWindow.to ?? "open"}.`);

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { hostnameOf } from "../canonical.js";
+import { WORKER_LIMITS } from "../costs.js";
 import type { Core } from "../core.js";
 import type { FindingRow, SourceRow, Store, Verification } from "../db/store.js";
 import { ENGINE_IDS, type EngineId } from "../config.js";
@@ -31,7 +32,6 @@ export interface ToolContext {
   engines?: EngineId[];
 }
 
-const MAX_FINDING_SOURCES = 6;
 const LIST_PAGE = 60;
 
 function define<S extends z.ZodRawShape>(
@@ -93,7 +93,7 @@ export function buildToolset(role: Role, ctx: ToolContext): ToolSpec[] {
     {
       query: z.string().min(1).max(2000),
       objective: z.string().max(4096).optional().describe("Goal of this search: what should rank first, what to exclude, what to pull."),
-      num_results: z.number().int().min(1).max(25).default(10),
+      num_results: z.number().int().min(1).max(WORKER_LIMITS.searchResults).default(10),
       engines: z.array(z.enum(ENGINE_IDS)).optional(),
       country: z.string().length(2).optional(),
       lang: z.string().min(2).max(5).optional(),
@@ -129,7 +129,7 @@ export function buildToolset(role: Role, ctx: ToolContext): ToolSpec[] {
       "Whether the evidence was fetched is computed from what was actually read, not from what you say.",
     {
       claim: z.string().min(10).max(1200).describe("One self-contained, checkable statement with names, versions and dates."),
-      sources: z.array(z.string().url()).min(1).max(MAX_FINDING_SOURCES),
+      sources: z.array(z.string().url()).min(1).max(WORKER_LIMITS.findingSources),
       source_kind: z.enum(["primary", "secondary"]).describe("primary: the originating organization, upstream code, original research or reporting."),
       published_date: isoDate.optional().describe("Publication date of the best source, if known."),
       critical: z.boolean().default(false).describe("True if a decision rests on this claim (exposure status, a figure, a legal point)."),
@@ -221,7 +221,7 @@ export function buildToolset(role: Role, ctx: ToolContext): ToolSpec[] {
       finding_id: z.number().int(),
       status: z.enum(["verified", "single_source", "unverified", "contradicted"]),
       note: z.string().max(600).describe("What you checked, and which source settled it."),
-      extra_sources: z.array(z.string().url()).max(4).default([]).describe("Independent sources you found while checking; they are added to the finding."),
+      extra_sources: z.array(z.string().url()).max(WORKER_LIMITS.verificationExtraSources).default([]).describe("Independent sources you found while checking; they are added to the finding."),
     },
     false,
     async (a) => {

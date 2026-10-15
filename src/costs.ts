@@ -98,7 +98,14 @@ export const DEPTH_ESTIMATES = {
   exhaustive: { searches: 25, pages: 40 },
 } as const;
 
+export const WORKER_LIMITS = { searchResults: 25, findingSources: 6, verificationExtraSources: 4 } as const;
+
 export function estimateSegmentExaSpend(depth: keyof typeof DEPTH_ESTIMATES): number {
   const e = DEPTH_ESTIMATES[depth];
   return e.searches * PRICES.exaSearch + e.pages * PRICES.exaPage;
+}
+
+/** Allow one maximal search and all original/extra citations per target finding. Not a phase spend cap. */
+export function estimateVerificationExaSpend(findings: number): number {
+  return findings * (PRICES.exaSearch + (WORKER_LIMITS.searchResults + WORKER_LIMITS.findingSources + WORKER_LIMITS.verificationExtraSources) * PRICES.exaPage);
 }

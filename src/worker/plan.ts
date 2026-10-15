@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { DEFAULT_CLAUDE_JOB_CAP_USD, ENGINE_IDS, type EngineId } from "../config.js";
-import { AGENT_EFFORTS, DEPTH_ESTIMATES, PRICES, agentWorstCase, estimateSegmentExaSpend, type AgentEffortName } from "../costs.js";
+import { AGENT_EFFORTS, DEPTH_ESTIMATES, PRICES, agentWorstCase, estimateSegmentExaSpend, estimateVerificationExaSpend, type AgentEffortName } from "../costs.js";
+import { FINDINGS_PER_SEGMENT, MAX_GAP_SEARCHES } from "./prompts.js";
 
 export const DEPTHS = ["standard", "deep", "exhaustive"] as const;
 export type Depth = (typeof DEPTHS)[number];
@@ -76,7 +77,10 @@ export interface WorstCase {
 export function computeWorstCase(plan: Plan, depth: Depth): WorstCase {
   const exaAgentUsd = plan.exaRuns.reduce((sum, r) => sum + agentWorstCase(r.effort, r.budgetUsd ?? undefined), 0);
   const exaSegments = plan.segments.filter((s) => s.engines.includes("exa")).length;
-  const exaSearchUsd = exaSegments * estimateSegmentExaSpend(depth);
+  // Later phases can use Exa even when a segment searched only Brave.
+  const exaSearchUsd = exaSegments * estimateSegmentExaSpend(depth)
+    + MAX_GAP_SEARCHES[depth] * PRICES.exaSearch
+    + estimateVerificationExaSpend(plan.segments.length * FINDINGS_PER_SEGMENT[depth]);
   const braveSegments = plan.segments.filter((s) => s.engines.includes("brave")).length;
   // Brave is not capped by the Exa budget; estimate with the same searches-per-segment figure.
   const braveRequests = braveSegments * DEPTH_ESTIMATES[depth].searches;
