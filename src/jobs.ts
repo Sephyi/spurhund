@@ -187,7 +187,6 @@ export function summarize(r: ReportJson): string {
   L.push(`# ${r.question}`, `Job ${r.jobId} · ${r.state} · ${r.depth}`);
   if (r.partial) L.push(`PARTIAL: ${r.partialReason}.`);
   L.push("", r.summary ?? "(no summary was generated)");
-  if (r.keyTakeaways.length) L.push("", ...r.keyTakeaways.map((t) => `- ${t}`));
   const c = r.counts;
   L.push("", `Findings: ${c.total} (${c.verified} verified, ${c.single_source} single source, ${c.unverified} unverified, ${c.contradicted} contradicted${c.unchecked ? `, ${c.unchecked} not checked` : ""}).`);
   const rank = { verified: 0, single_source: 1, unchecked: 2, unverified: 3, contradicted: 4 } as const;

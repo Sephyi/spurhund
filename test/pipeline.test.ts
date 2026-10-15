@@ -145,7 +145,7 @@ const goodScript: Script = async (req, call) => {
       return {};
     }
     case "report":
-      return { structured: { summary: "Both libraries document ML-KEM support (#1, #2).", keyTakeaways: ["OpenSSL documents it (#1)"] } };
+      return { structured: { summary: "Both libraries document ML-KEM support (#1, #2)." } };
     default:
       return {};
   }
@@ -344,7 +344,7 @@ describe("runJob: failures and cancellation", () => {
   });
 
   it("a job without findings skips merge, gap and verify and says so", async () => {
-    const s = setup({ script: async (req) => (req.role === "report" ? { structured: { summary: "Nothing found.", keyTakeaways: [] } } : {}) });
+    const s = setup({ script: async (req) => (req.role === "report" ? { structured: { summary: "Nothing found." } } : {}) });
     expect(await runJob(s.deps, s.job)).toBe("completed");
     expect(s.runner.roles.filter((r) => r !== "segment")).toEqual(["report"]);
     expect(s.store.getReport(s.job.id)!.markdown).toContain("_No findings were recorded._");
@@ -427,7 +427,7 @@ describe("runJob: failures and cancellation", () => {
 
 describe("workerMain", () => {
   function twoJobs() {
-    const s = setup({ depth: "standard", script: async (req) => (req.role === "report" ? { structured: { summary: "ok", keyTakeaways: [] } } : {}) });
+    const s = setup({ depth: "standard", script: async (req) => (req.role === "report" ? { structured: { summary: "ok" } } : {}) });
     // setup() already claimed job 1; release it back to "submitted" and add a second one.
     const store = s.store;
     const mk = () => {

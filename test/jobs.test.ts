@@ -158,7 +158,7 @@ describe("JobController.cancel", () => {
 describe("JobController.result", () => {
   const reportJson = (over: Partial<ReportJson> = {}): ReportJson => ({
     jobId: "job_000000000001", state: "completed", question: plan.question, depth: "deep", partial: false, partialReason: null,
-    summary: "OpenSSL and rustls ship ML-KEM (#1, #2).", keyTakeaways: ["OpenSSL 3.5 has it (#1)"],
+    summary: "OpenSSL and rustls ship ML-KEM (#1, #2).",
     findings: Array.from({ length: 12 }, (_, i) => ({
       id: i + 1, segment: "s", claim: `claim ${i + 1}`, verification: i === 0 ? ("contradicted" as const) : i === 1 ? ("verified" as const) : ("single_source" as const),
       verificationNote: null, sourceKind: "primary", evidence: "fetched", critical: i === 5, engines: ["exa"], publishedDate: null,

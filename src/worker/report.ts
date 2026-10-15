@@ -20,7 +20,6 @@ export interface ReportJson {
   partial: boolean;
   partialReason: string | null;
   summary: string | null;
-  keyTakeaways: string[];
   findings: {
     id: number;
     segment: string;
@@ -113,7 +112,6 @@ export function buildReport(store: Store, input: ReportInput): { markdown: strin
     partial,
     partialReason,
     summary: input.narrative?.summary ?? null,
-    keyTakeaways: input.narrative?.keyTakeaways ?? [],
     findings: findings.map((f) => ({
       id: f.id,
       segment: f.segment,
@@ -155,7 +153,6 @@ function renderMarkdown(r: ReportJson, plan: Plan): string {
 
   L.push("## Summary", "");
   L.push(r.summary ?? "_No summary was generated. The findings below are the result._", "");
-  if (r.keyTakeaways.length) L.push(...r.keyTakeaways.map((t) => `- ${t}`), "");
 
   L.push("## Verification status", "");
   L.push(`${r.counts.total} findings: ${ORDER.map((v) => `${r.counts[v]} ${v.replace("_", " ")}`).join(", ")}.`, "");

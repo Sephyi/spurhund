@@ -15,8 +15,7 @@ export const MergeResultSchema = z.object({
 export type MergeResult = z.infer<typeof MergeResultSchema>;
 
 export const NarrativeSchema = z.object({
-  summary: z.string().describe("Markdown, 120-350 words. Lead with the answer. Refer to findings as #id."),
-  keyTakeaways: z.array(z.string()).describe("At most 8 one-line takeaways, each backed by finding ids."),
+  summary: z.string().describe("Prose, at most 250 words, no bullet list. Lead with the answer and cite finding ids like [#4]."),
 });
 export type Narrative = z.infer<typeof NarrativeSchema>;
 
@@ -169,6 +168,6 @@ export function reportPrompt(opts: { plan: Plan; state: string }): string {
     `Question: ${opts.plan.question}`,
     `What a good answer contains: ${opts.plan.successCriteria}`,
     `Job state: ${opts.state}.`,
-    "Lead with the answer. Say which statements are verified and which rest on a single source; refer to findings as #id. State what stays open. Do not call the result complete or definitive.",
+    "Write at most 250 words of prose, no bullet list. Lead with the answer. Say which statements are verified and which rest on a single source; cite finding ids like [#4]. State what stays open. Do not call the result complete or definitive.",
   ].join("\n");
 }

@@ -3,7 +3,7 @@ import { loadConfig } from "../src/config.js";
 import type { Plan } from "../src/worker/plan.js";
 import { buildReport } from "../src/worker/report.js";
 import { buildToolset } from "../src/worker/tools.js";
-import { mergePrompt } from "../src/worker/prompts.js";
+import { NarrativeSchema, mergePrompt, reportPrompt } from "../src/worker/prompts.js";
 import { LONG_TEXT, harness } from "./helpers.js";
 import { summarize } from "../src/jobs.js";
 
@@ -104,4 +104,16 @@ describe("resolved gaps", () => {
       for (const role of ["planner", "segment", "merge", "gap", "report"] as const) expect(buildToolset(role, { core: h.core, store: h.store, jobId: h.jobId }).map((t) => t.name)).not.toContain("resolve_gap");
     } finally { h.store.close(); }
   });
+});
+
+it("asks for one short prose summary without duplicate takeaways", () => {
+  expect(NarrativeSchema.safeParse({ summary: "A sourced answer [#4]." }).success).toBe(true);
+  expect(Object.keys(NarrativeSchema.shape)).toEqual(["summary"]);
+  const prompt = reportPrompt({ plan, state: "completed" });
+  expect(prompt).toContain("at most 250 words");
+  expect(prompt).toContain("no bullet list");
+  expect(prompt).toContain("[#4]");
+  const h = evidenceSetup();
+  try { expect(h.report().json).not.toHaveProperty("keyTakeaways"); }
+  finally { h.store.close(); }
 });
