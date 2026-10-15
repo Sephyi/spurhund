@@ -192,7 +192,7 @@ describe("findings, gaps, exa runs, reports", () => {
   it("stores gaps", () => {
     const { store } = setup();
     store.addGap("j", "s1", "no sources before 2024");
-    expect(store.listGaps("j")).toEqual([{ segment: "s1", description: "no sources before 2024" }]);
+    expect(store.listGaps("j")).toEqual([{ id: 1, segment: "s1", description: "no sources before 2024", resolvedNote: null, resolvedBy: [] }]);
   });
 
   it("upserts exa runs and keeps the output", () => {

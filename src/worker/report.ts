@@ -1,6 +1,6 @@
 import { hostnameOf } from "../canonical.js";
 import type { Config } from "../config.js";
-import type { FindingRow, JobRow, PlanRow, SourceRow, Store, Verification } from "../db/store.js";
+import type { FindingRow, GapRow, JobRow, PlanRow, SourceRow, Store, Verification } from "../db/store.js";
 import type { MergeResult, Narrative } from "./prompts.js";
 import type { Plan } from "./plan.js";
 
@@ -37,6 +37,7 @@ export interface ReportJson {
   counts: Record<Verification, number> & { total: number };
   coverage: { segmentId: string; name: string; level: string; findings: number; note: string }[];
   gaps: { segment: string; description: string }[];
+  closedGaps: GapRow[];
   engines: { sourcesTotal: number; foundBy: Record<string, number>; singleEngineCited: Record<string, number> };
   exaRuns: { id: string; effort: string; status: string; stopReason: string | null; costUsd: number }[];
   costs: { exaUsd: number; exaByEndpoint: Record<string, number>; braveUsd: number; claudeEstimateUsd: number };
@@ -128,7 +129,8 @@ export function buildReport(store: Store, input: ReportInput): { markdown: strin
     })),
     counts,
     coverage,
-    gaps,
+    gaps: gaps.filter((g) => g.resolvedNote === null),
+    closedGaps: gaps.filter((g) => g.resolvedNote !== null),
     engines: { sourcesTotal: enginesBySource.size, foundBy, singleEngineCited },
     exaRuns: runs.map((r) => ({ id: r.planRunId, effort: r.effort, status: r.status, stopReason: r.stopReason, costUsd: r.costUsd })),
     costs: { exaUsd: stats.exaCostUsd, exaByEndpoint, braveUsd: stats.braveCostUsd, claudeEstimateUsd },
@@ -185,9 +187,14 @@ function renderMarkdown(r: ReportJson, plan: Plan): string {
   for (const c of r.coverage) L.push(`| ${c.name} | ${c.level} | ${c.findings} | ${c.note.replace(/\|/g, "/").replace(/\n/g, " ")} |`);
   L.push("");
 
-  L.push("## Gaps", "");
+  L.push("## Open gaps", "");
   if (r.gaps.length) L.push(...r.gaps.map((g) => `- (${g.segment}) ${g.description}`));
   else L.push("- None were recorded. That reflects what the research looked for, not proof that nothing is missing.");
+  L.push("");
+
+  L.push("## Closed gaps", "");
+  if (r.closedGaps.length) L.push(...r.closedGaps.map((g) => `- #${g.id} (${g.segment}) ${g.description}. ${g.resolvedNote} Findings: ${g.resolvedBy.map((id) => `[#${id}]`).join(", ")}.`));
+  else L.push("- None.");
   L.push("");
 
   L.push("## Engines", "");

@@ -147,10 +147,11 @@ export function gapPrompt(opts: { plan: Plan; merge: MergeResult | undefined; de
   ].join("\n");
 }
 
-export function verifyPrompt(opts: { plan: Plan }): string {
+export function verifyPrompt(opts: { plan: Plan; gaps?: { id: number; description: string }[] }): string {
   return [
     "Task: verify the findings of this research job.",
     `Question: ${opts.plan.question}`,
+    `Open gaps: ${(opts.gaps ?? []).map((g) => `#${g.id}: ${g.description}`).join("; ") || "none"}. Close those answered by verified findings with resolve_gap, citing the finding ids and a note. Leave unanswered gaps open.`,
     "Go through list_findings with only_unverified=true until none are left. For each finding set a status with set_verification:",
     "- Each source in the list shows its read state in brackets. If no source of a finding is [read], fetch the best one first; never fetch a page that is already [read].",
     "- verified: a page that was read in full states the claim as written (names, versions, dates).",

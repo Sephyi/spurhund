@@ -113,6 +113,14 @@ export interface JobStats {
   braveCostUsd: number;
 }
 
+export interface GapRow {
+  id: number;
+  segment: string;
+  description: string;
+  resolvedNote: string | null;
+  resolvedBy: number[];
+}
+
 type Row = Record<string, unknown>;
 
 export class Store {
@@ -140,6 +148,10 @@ export class Store {
     db.exec(SCHEMA_SQL);
     const version = db.pragma("user_version", { simple: true }) as number;
     if (version === 1) db.exec("ALTER TABLE jobs ADD COLUMN spawned_at TEXT"); // v1 -> v2
+    if (version >= 1 && version < 3) db.transaction(() => {
+      db.exec("ALTER TABLE gaps ADD COLUMN resolved_note TEXT");
+      db.exec("ALTER TABLE gaps ADD COLUMN resolved_by_json TEXT");
+    })();
     if (version > SCHEMA_VERSION) {
       db.close();
       throw new Error(`Database schema v${version} is newer than this spurhund (v${SCHEMA_VERSION}); upgrade spurhund.`);
@@ -513,11 +525,24 @@ export class Store {
     this.db.prepare("INSERT INTO gaps (job_id, segment, description) VALUES (?, ?, ?)").run(jobId, segment, description);
   }
 
-  listGaps(jobId: string): { segment: string; description: string }[] {
-    return this.db.prepare("SELECT segment, description FROM gaps WHERE job_id = ? ORDER BY id").all(jobId) as {
-      segment: string;
-      description: string;
-    }[];
+  listGaps(jobId: string): GapRow[] {
+    return (this.db.prepare("SELECT * FROM gaps WHERE job_id = ? ORDER BY id").all(jobId) as Row[]).map((r) => ({
+      id: r.id as number, segment: r.segment as string, description: r.description as string,
+      resolvedNote: r.resolved_note as string | null, resolvedBy: JSON.parse((r.resolved_by_json as string | null) ?? "[]") as number[],
+    }));
+  }
+
+  resolveGap(jobId: string, gapId: number, findingIds: number[], note: string): void {
+    this.db.transaction(() => {
+      if (!this.listGaps(jobId).some((g) => g.id === gapId)) throw new Error(`Gap ${gapId} not found in this job.`);
+      if (!note.trim() || findingIds.length === 0) throw new Error("A resolution needs verified findings and a note.");
+      for (const id of findingIds) {
+        const f = this.getFinding(id);
+        if (!f || f.jobId !== jobId || f.verification !== "verified") throw new Error(`Finding ${id} must be verified in this job.`);
+      }
+      this.db.prepare("UPDATE gaps SET resolved_note = ?, resolved_by_json = ? WHERE id = ? AND job_id = ?")
+        .run(note, JSON.stringify([...new Set(findingIds)]), gapId, jobId);
+    })();
   }
 
   // ------------------------------------------------------------- exa runs
@@ -595,7 +620,7 @@ export class Store {
     return {
       sources: count("SELECT COUNT(DISTINCT source_id) AS n FROM source_hits WHERE job_id = ?"),
       findings: count("SELECT COUNT(*) AS n FROM findings WHERE job_id = ?"),
-      gaps: count("SELECT COUNT(*) AS n FROM gaps WHERE job_id = ?"),
+      gaps: count("SELECT COUNT(*) AS n FROM gaps WHERE job_id = ? AND resolved_note IS NULL"),
       exaRuns: count("SELECT COUNT(*) AS n FROM exa_runs WHERE job_id = ?"),
       engineCalls: count("SELECT COUNT(*) AS n FROM engine_calls WHERE job_id = ?"),
       exaCostUsd: this.sumCost(jobId, "exa"),

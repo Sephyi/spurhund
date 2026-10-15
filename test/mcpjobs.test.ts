@@ -60,7 +60,7 @@ const finishWithReport = (h: ReturnType<typeof harness>, jobId: string, over: Pa
   const json: ReportJson = {
     jobId, state: "completed", question: plan.question, depth: "standard", partial: false, partialReason: null, summary: "Two crates implement it (#1).",
     keyTakeaways: [], findings: [{ id: 1, segment: "crates", claim: "ml-kem implements FIPS 203", verification: "verified", verificationNote: null, sourceKind: "primary", evidence: "fetched", critical: false, engines: ["exa"], publishedDate: null, sources: [{ url: "https://crates.io/crates/ml-kem", title: null, readStatus: "read" }] }],
-    counts: { total: 1, verified: 1, single_source: 0, unchecked: 0, unverified: 0, contradicted: 0 }, coverage: [], gaps: [],
+    counts: { total: 1, verified: 1, single_source: 0, unchecked: 0, unverified: 0, contradicted: 0 }, coverage: [], gaps: [], closedGaps: [],
     engines: { sourcesTotal: 1, foundBy: { exa: 1 }, singleEngineCited: {} }, exaRuns: [],
     costs: { exaUsd: 0.1, exaByEndpoint: {}, braveUsd: 0, claudeEstimateUsd: 0.5 },
     settings: { authMode: "oauth", models: {}, efforts: { orchestrator: "high", worker: "medium", verifier: "high" }, capUsd: 5 }, startedAt: null, finishedAt: null, ...over,

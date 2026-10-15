@@ -1,4 +1,10 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import Database from "better-sqlite3";
+import { SCHEMA_SQL } from "../src/db/schema.js";
+import { Store } from "../src/db/store.js";
 import { PlanSchema } from "../src/worker/plan.js";
 import { MergeResultSchema, NarrativeSchema, jsonSchemaOf } from "../src/worker/prompts.js";
 
@@ -9,6 +15,28 @@ import { MergeResultSchema, NarrativeSchema, jsonSchemaOf } from "../src/worker/
  */
 const FORBIDDEN_KEYS = ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "maxItems", "uniqueItems", "minProperties", "maxProperties", "patternProperties", "if", "then", "else", "not", "oneOf"];
 const ALLOWED_FORMATS = new Set(["date-time", "time", "date", "duration", "email", "hostname", "uri", "ipv4", "ipv6", "uuid"]);
+
+it.each([1, 2])("migrates schema v%i to v3 and preserves existing gaps", (version) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "spurhund-migration-"));
+  const file = path.join(dir, "db.sqlite");
+  try {
+    const db = new Database(file);
+    let sql = SCHEMA_SQL.replace(/,?\n  resolved_note TEXT/g, "").replace(/,?\n  resolved_by_json TEXT/g, "");
+    if (version === 1) sql = sql.replace("  spawned_at TEXT,\n", "");
+    db.exec(sql);
+    db.pragma(`user_version = ${version}`);
+    db.prepare("INSERT INTO gaps (job_id, segment, description) VALUES ('j', 's', 'original gap')").run();
+    db.close();
+    const store = Store.open(file);
+    try {
+      expect(store.listGaps("j")[0]).toMatchObject({ id: 1, description: "original gap", resolvedNote: null, resolvedBy: [] });
+      expect(store.jobStats("j").gaps).toBe(1);
+    } finally { store.close(); }
+    const reopened = new Database(file);
+    expect(reopened.pragma("user_version", { simple: true })).toBe(3);
+    reopened.close();
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
 
 function violations(node: unknown, pathStr = "$", seenRefs: string[] = []): string[] {
   if (Array.isArray(node)) return node.flatMap((n, i) => violations(n, `${pathStr}[${i}]`, seenRefs));

@@ -278,7 +278,7 @@ export async function runJob(deps: PipelineDeps, job: JobRow): Promise<JobOutcom
       label: "verify",
       model: config.models.verifier,
       effort: config.efforts.verifier,
-      prompt: verifyPrompt({ plan }),
+      prompt: verifyPrompt({ plan, gaps: store.listGaps(job.id).filter((g) => g.resolvedNote === null) }),
       tools: buildToolset("verify", { core, store, jobId: job.id, segment: "verification" }),
       maxTurns: Math.min(config.maxTurns, VERIFY_TURNS),
     });

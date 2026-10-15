@@ -255,6 +255,18 @@ export function buildToolset(role: Role, ctx: ToolContext): ToolSpec[] {
     },
   );
 
+  const resolveGap = define(
+    "resolve_gap",
+    "Close an open gap answered by verified findings in this job.",
+    { gap_id: z.number().int(), finding_ids: z.array(z.number().int()).min(1).max(20), note: z.string().min(1).max(600) },
+    false,
+    async (a) => {
+      if (!jobId) return { isError: true, text: "No job." };
+      store.resolveGap(jobId, a.gap_id, a.finding_ids, a.note);
+      return { text: `Gap #${a.gap_id} closed.` };
+    },
+  );
+
   const exaRunOutput = define(
     "exa_run_output",
     "Read the result of a completed Exa Agent run from the plan (text and structured output). Its cited pages are registered as seen, so you can cite them in record_finding.",
@@ -289,7 +301,7 @@ export function buildToolset(role: Role, ctx: ToolContext): ToolSpec[] {
     case "gap":
       return [search, fetch, listFindings, recordFinding, recordGap];
     case "verify":
-      return [listFindings, fetch, search, setVerification, recordGap];
+      return [listFindings, fetch, search, setVerification, recordGap, resolveGap];
     case "report":
       return [listFindings];
   }

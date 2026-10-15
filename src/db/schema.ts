@@ -1,5 +1,5 @@
 /** Bumped whenever the schema changes; stored in PRAGMA user_version. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS plans (
@@ -101,7 +101,9 @@ CREATE TABLE IF NOT EXISTS gaps (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   job_id TEXT NOT NULL,
   segment TEXT NOT NULL,
-  description TEXT NOT NULL
+  description TEXT NOT NULL,
+  resolved_note TEXT,
+  resolved_by_json TEXT
 );
 CREATE INDEX IF NOT EXISTS gaps_job ON gaps(job_id);
 

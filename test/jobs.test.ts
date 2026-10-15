@@ -165,7 +165,7 @@ describe("JobController.result", () => {
       sources: [{ url: `https://e.com/${i + 1}`, title: null, readStatus: "read" }],
     })),
     counts: { total: 12, verified: 1, single_source: 10, unchecked: 0, unverified: 0, contradicted: 1 },
-    coverage: [], gaps: [{ segment: "s", description: "2024 history is open" }],
+    coverage: [], gaps: [{ segment: "s", description: "2024 history is open" }], closedGaps: [],
     engines: { sourcesTotal: 12, foundBy: { exa: 12 }, singleEngineCited: {} }, exaRuns: [],
     costs: { exaUsd: 1.234, exaByEndpoint: {}, braveUsd: 0.1, claudeEstimateUsd: 2.5 },
     settings: { authMode: "oauth", models: {}, efforts: { orchestrator: "high", worker: "medium", verifier: "high" }, capUsd: 5 },

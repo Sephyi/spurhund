@@ -5,6 +5,7 @@ import { buildReport } from "../src/worker/report.js";
 import { buildToolset } from "../src/worker/tools.js";
 import { mergePrompt } from "../src/worker/prompts.js";
 import { LONG_TEXT, harness } from "./helpers.js";
+import { summarize } from "../src/jobs.js";
 
 const plan: Plan = {
   question: "Which releases support the protocol?",
@@ -74,4 +75,33 @@ it("keeps coverage explicitly separate from later verification", () => {
     expect(mergePrompt({ plan, exaRunIds: [] })).toContain("Verification runs after you. Do not comment on verification status; judge coverage only by what was found and from where.");
     expect(h.report().markdown).toContain("Coverage (assessed at merge, before verification)");
   } finally { h.store.close(); }
+});
+
+describe("resolved gaps", () => {
+  it("closes only this job's gaps using verified findings and splits the report", async () => {
+    const h = evidenceSetup();
+    try {
+      const f = h.store.addFinding({ jobId: h.jobId, segment: "releases", claim: "Release status is documented", sourceIds: [], sourceKind: "primary", evidence: "snippet" });
+      h.store.addGap(h.jobId, "releases", "Release date not found");
+      h.store.addGap(h.jobId, "releases", "Older history not found");
+      h.store.addGap("other-job", "other", "Another job's gap");
+      const gap = h.store.listGaps(h.jobId)[0]!;
+      const other = h.store.listGaps("other-job")[0]!;
+      const tool = buildToolset("verify", { core: h.core, store: h.store, jobId: h.jobId }).find((t) => t.name === "resolve_gap");
+      expect(tool).toBeDefined();
+      expect((await tool!.handler({ gap_id: gap.id, finding_ids: [f], note: "Answered" })).isError).toBe(true);
+      h.store.setVerification(f, "verified", "Checked");
+      expect(() => h.store.resolveGap(h.jobId, other.id, [f], "Wrong job")).toThrow(/not found.*job/i);
+      expect((await tool!.handler({ gap_id: gap.id, finding_ids: [f], note: "Release states the date" })).isError).toBeUndefined();
+      const r = h.report();
+      expect(r.json.gaps.map((g) => g.description)).toEqual(["Older history not found"]);
+      expect(r.json.closedGaps[0]).toMatchObject({ id: gap.id, resolvedBy: [f], resolvedNote: "Release states the date" });
+      expect(r.markdown).toContain("## Open gaps");
+      expect(r.markdown).toContain("## Closed gaps");
+      expect(r.markdown).toContain(`[#${f}]`);
+      expect(summarize(r.json)).not.toContain("Release date not found");
+      expect(h.store.jobStats(h.jobId).gaps).toBe(1);
+      for (const role of ["planner", "segment", "merge", "gap", "report"] as const) expect(buildToolset(role, { core: h.core, store: h.store, jobId: h.jobId }).map((t) => t.name)).not.toContain("resolve_gap");
+    } finally { h.store.close(); }
+  });
 });

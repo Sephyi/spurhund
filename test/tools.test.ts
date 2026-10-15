@@ -29,7 +29,7 @@ describe("toolsets per role", () => {
     expect(names("segment")).toEqual(["search", "fetch", "record_finding", "record_gap"]);
     expect(names("merge")).toEqual(["list_findings", "exa_run_output", "record_finding", "merge_findings", "record_gap"]);
     expect(names("gap")).toEqual(["search", "fetch", "list_findings", "record_finding", "record_gap"]);
-    expect(names("verify")).toEqual(["list_findings", "fetch", "search", "set_verification", "record_gap"]);
+    expect(names("verify")).toEqual(["list_findings", "fetch", "search", "set_verification", "record_gap", "resolve_gap"]);
     expect(names("report")).toEqual(["list_findings"]);
   });
 
@@ -109,7 +109,7 @@ describe("record_gap and list_findings", () => {
   it("records gaps under the session's segment", async () => {
     const { call, h } = setup("segment");
     await call("record_gap", { description: "No vendor statements before 2025 found" });
-    expect(h.store.listGaps(h.core.jobId!)).toEqual([{ segment: "seg1", description: "No vendor statements before 2025 found" }]);
+    expect(h.store.listGaps(h.core.jobId!)).toEqual([{ id: 1, segment: "seg1", description: "No vendor statements before 2025 found", resolvedNote: null, resolvedBy: [] }]);
   });
 
   it("lists findings with sources, read state, engines and pages through them", async () => {
