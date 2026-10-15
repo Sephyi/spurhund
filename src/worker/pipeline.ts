@@ -93,8 +93,9 @@ export async function runJob(deps: PipelineDeps, job: JobRow): Promise<JobOutcom
   // One abort signal for SIGTERM and for a cancel request written by the MCP server.
   const ac = new AbortController();
   const signal = ac.signal;
+  const onAbort = () => ac.abort();
   if (deps.signal?.aborted) ac.abort();
-  else deps.signal?.addEventListener("abort", () => ac.abort(), { once: true });
+  else deps.signal?.addEventListener("abort", onAbort, { once: true });
   const watcher = setInterval(() => {
     if (store.isCancelRequested(job.id)) ac.abort();
   }, deps.cancelPollMs ?? 2000);
@@ -392,6 +393,7 @@ export async function runJob(deps: PipelineDeps, job: JobRow): Promise<JobOutcom
     }
   } finally {
     clearInterval(watcher);
+    deps.signal?.removeEventListener("abort", onAbort);
   }
 
   // A partial report is written for canceled and failed jobs too. It is built

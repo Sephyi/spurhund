@@ -388,6 +388,19 @@ describe("runJob: Exa Agent runs", () => {
 });
 
 describe("runJob: failures and cancellation", () => {
+  it.each(["completed", "failed"] as const)("detaches the external abort handler after a %s job", async (outcome) => {
+    const ac = new AbortController();
+    const s = setup({ depth: "standard", script: outcome === "completed" ? goodScript : () => { throw new Error("offline fatal failure"); } });
+    s.deps.signal = ac.signal;
+    try {
+      expect(await runJob(s.deps, s.job)).toBe(outcome);
+      const workerSignal = s.runner.calls[0]!.signal!;
+      expect(workerSignal.aborted).toBe(false);
+      ac.abort();
+      expect(workerSignal.aborted).toBe(false);
+    } finally { s.store.close(); }
+  });
+
   it("a failing segment session is a gap, not a failed job", async () => {
     const s = setup({
       script: async (req, call, n) => (req.label === "segment:rustls" ? { ok: false, subtype: "error_max_turns", errors: ["too many turns"] } : goodScript(req, call, n)),
