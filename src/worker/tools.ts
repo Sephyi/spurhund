@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { hostnameOf } from "../canonical.js";
+import { hostnameOf, siteOf } from "../canonical.js";
 import { WORKER_LIMITS } from "../costs.js";
 import type { Core } from "../core.js";
 import type { FindingRow, SourceRow, Store, Verification } from "../db/store.js";
@@ -241,7 +241,7 @@ export function buildToolset(role: Role, ctx: ToolContext): ToolSpec[] {
       let note = a.note;
       if (status === "verified") {
         const readFully = rows.some((s) => s.readStatus === "read");
-        const hosts = new Set(rows.filter((s) => s.readStatus === "read" || s.readStatus === "truncated").map((s) => hostnameOf(s.url)).filter(Boolean));
+        const hosts = new Set(rows.filter((s) => s.readStatus === "read" || s.readStatus === "truncated").map((s) => hostnameOf(s.url)).filter((h): h is string => h !== null).map(siteOf));
         if (!readFully) {
           status = "unverified";
           note = `Downgraded: no cited page was read in full. ${note}`;

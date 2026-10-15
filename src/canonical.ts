@@ -53,3 +53,11 @@ export function hostnameOf(url: string): string | null {
     return null;
   }
 }
+
+/** Small ccTLD heuristic, not a public-suffix database. */
+export function siteOf(host: string): string {
+  const labels = host.toLowerCase().replace(/\.$/, "").split(".");
+  const second = labels.at(-2) ?? "";
+  const ccSuffix = labels.at(-1)?.length === 2 && ["co", "com", "org", "net", "gov", "ac", "edu"].includes(second);
+  return labels.slice(ccSuffix ? -3 : -2).join(".");
+}

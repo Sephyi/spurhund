@@ -143,7 +143,10 @@ describe("merge_findings", () => {
 
 describe("set_verification guardrails", () => {
   async function withFinding(opts: { read: string[]; cited: string[]; critical?: boolean }) {
-    const s = setup("verify");
+    const s = setup("verify", { exa: {
+      search: () => exaResults([...new Set([...opts.read, ...opts.cited])]),
+      getContents: (urls) => ({ results: urls.map((url) => ({ url, text: LONG_TEXT })) }),
+    } });
     await s.call("search", { query: "q" });
     for (const u of opts.read) await s.call("fetch", { urls: [u] });
     const ids = s.h.core.resolveSources(opts.cited);
@@ -177,6 +180,16 @@ describe("set_verification guardrails", () => {
     expect(r.text).toMatch(/set to verified\./);
     expect(two.h.store.getFinding(two.id)).toMatchObject({ verification: "verified" });
     expect(two.h.store.getFinding(two.id)!.sourceIds).toHaveLength(2);
+  });
+
+  it.each([
+    [["https://docs.example.com/a", "https://blog.example.com/b"], "single_source"],
+    [["https://bbc.co.uk/a", "https://gov.uk/b"], "verified"],
+  ] as const)("counts independent sites for %j", async (urls, expected) => {
+    const sources = [...urls];
+    const { call, h, id } = await withFinding({ read: sources, cited: sources, critical: true });
+    await call("set_verification", { finding_id: id, status: "verified", note: "Checked both pages" });
+    expect(h.store.getFinding(id)!.verification).toBe(expected);
   });
 
   it("does not let extra sources be invented", async () => {
