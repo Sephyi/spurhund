@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Starts spurhund with its API keys read from the macOS Keychain, so no secret
+# has to sit in a client config file (claude_desktop_config.json, ~/.claude.json).
+#
+# One-time setup (each command prompts for the secret; nothing lands in shell history):
+#   security add-generic-password -s spurhund-exa           -a "$USER" -w
+#   security add-generic-password -s spurhund-brave         -a "$USER" -w
+#   security add-generic-password -s spurhund-claude-oauth  -a "$USER" -w   # output of: claude setup-token
+#   security add-generic-password -s spurhund-anthropic     -a "$USER" -w   # only for SPURHUND_AUTH=api
+#
+# Values already present in the environment win over the Keychain.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENTRY="${SPURHUND_ENTRY:-$SCRIPT_DIR/../dist/cli.js}"
+ACCOUNT="${SPURHUND_KEYCHAIN_ACCOUNT:-${USER:-$(id -un)}}"
+
+# Apps launched from Finder or the Dock do not inherit the shell PATH (nvm, Homebrew).
+NODE_BIN="${SPURHUND_NODE:-}"
+if [ -z "$NODE_BIN" ]; then
+  NODE_BIN="$(command -v node || true)"
+fi
+if [ -z "$NODE_BIN" ]; then
+  IFS=: read -r -a candidates <<< "${SPURHUND_NODE_FALLBACKS:-/opt/homebrew/bin/node:/usr/local/bin/node}"
+  for candidate in "${candidates[@]}"; do
+    if [ -x "$candidate" ]; then NODE_BIN="$candidate"; break; fi
+  done
+fi
+if [ -z "$NODE_BIN" ]; then
+  echo "spurhund-keychain: node not found. Install Node 20+ or set SPURHUND_NODE=/path/to/node." >&2
+  exit 127
+fi
+
+keychain_get() {
+  # Prints the secret, or nothing if the item does not exist.
+  security find-generic-password -s "$1" -a "$ACCOUNT" -w 2>/dev/null || true
+}
+
+load() { # load VAR service
+  local var="$1" service="$2"
+  if [ -z "${!var:-}" ]; then
+    local value
+    value="$(keychain_get "$service")"
+    if [ -n "$value" ]; then export "$var=$value"; fi
+  fi
+}
+
+load EXA_API_KEY spurhund-exa
+load BRAVE_API_KEY spurhund-brave
+if [ "${SPURHUND_AUTH:-oauth}" = "api" ]; then
+  load ANTHROPIC_API_KEY spurhund-anthropic
+else
+  load CLAUDE_CODE_OAUTH_TOKEN spurhund-claude-oauth
+fi
+
+exec "$NODE_BIN" "$ENTRY" "$@"
