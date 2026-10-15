@@ -75,6 +75,12 @@ afterEach(() => {
 });
 
 describe("ClaudeAgentRunner: what the SDK is asked to do", () => {
+  it("forwards the pipeline's per-session allowance to the SDK", async () => {
+    const { r } = runner({ SPURHUND_MAX_BUDGET_USD: "2" });
+    await r.run({ ...baseReq, maxBudgetUsd: 0.15 });
+    expect(sdk.queryCalls[0]!.options.maxBudgetUsd).toBe(0.15);
+  });
+
   it("runs a locked-down session: no built-in tools, no user settings, only our tools, everything else denied", async () => {
     const { r, config } = runner();
     await r.run(baseReq);

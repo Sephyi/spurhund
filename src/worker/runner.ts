@@ -17,6 +17,7 @@ export interface RunRequest {
   /** JSON Schema for a structured final answer. */
   outputSchema?: Record<string, unknown>;
   maxTurns: number;
+  maxBudgetUsd?: number;
   signal?: AbortSignal;
   onProgress?: (message: string) => void;
 }
@@ -96,7 +97,7 @@ export class ClaudeAgentRunner implements AgentRunner {
         model: req.model,
         effort: req.effort,
         maxTurns: req.maxTurns,
-        ...(this.config.maxBudgetUsd !== undefined ? { maxBudgetUsd: this.config.maxBudgetUsd } : {}),
+        ...((req.maxBudgetUsd ?? this.config.maxBudgetUsd) !== undefined ? { maxBudgetUsd: req.maxBudgetUsd ?? this.config.maxBudgetUsd } : {}),
         systemPrompt: req.systemPrompt,
         mcpServers: { [SERVER_NAME]: server },
         // Only the server above: no user, project or plugin MCP servers (settingSources does not cover these).

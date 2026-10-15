@@ -125,3 +125,8 @@ it("separates answer requirements from unverified calibration leads", () => {
   expect(prompt).toContain("Plan notes are unverified leads; confirm or refute them from sources, do not assume them.");
   expect(prompt).toContain("Unverified lead: release candidate");
 });
+
+it("defaults the Claude job cap to three dollars and rejects invalid caps", () => {
+  expect(loadConfig({}).claudeMaxUsdPerJob).toBe(3);
+  for (const value of ["0", "-1", "NaN", "Infinity"]) expect(() => loadConfig({ SPURHUND_MAX_CLAUDE_USD_PER_JOB: value })).toThrow(/SPURHUND_MAX_CLAUDE_USD_PER_JOB/);
+});

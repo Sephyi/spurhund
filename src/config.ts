@@ -9,6 +9,7 @@ export const CLAUDE_EFFORTS = ["medium", "high", "xhigh", "max"] as const;
 export type ClaudeEffort = (typeof CLAUDE_EFFORTS)[number];
 
 export type AuthMode = "oauth" | "api";
+export const DEFAULT_CLAUDE_JOB_CAP_USD = 3;
 
 export interface Config {
   home: string;
@@ -23,6 +24,7 @@ export interface Config {
   models: { orchestrator: string; worker: string; verifier: string };
   efforts: { orchestrator: ClaudeEffort; worker: ClaudeEffort; verifier: ClaudeEffort };
   exaMaxUsdPerJob: number;
+  claudeMaxUsdPerJob: number;
   maxTurns: number;
   maxBudgetUsd?: number;
   maxConcurrentJobs: number;
@@ -133,6 +135,7 @@ export function loadConfig(env: Env = process.env): Config {
       verifier: effort("SPURHUND_EFFORT_VERIFIER", DEFAULTS.verifierEffort),
     },
     exaMaxUsdPerJob: num("SPURHUND_EXA_MAX_USD_PER_JOB", DEFAULTS.exaMaxUsdPerJob, { min: 0 })!,
+    claudeMaxUsdPerJob: num("SPURHUND_MAX_CLAUDE_USD_PER_JOB", DEFAULT_CLAUDE_JOB_CAP_USD, { min: 0 })!,
     maxTurns: num("SPURHUND_MAX_TURNS", DEFAULTS.maxTurns, { min: 1, int: true })!,
     maxBudgetUsd: num("SPURHUND_MAX_BUDGET_USD", undefined, { min: 0 }),
     maxConcurrentJobs: num("SPURHUND_MAX_CONCURRENT_JOBS", DEFAULTS.maxConcurrentJobs, { min: 1, int: true })!,
@@ -144,6 +147,7 @@ export function loadConfig(env: Env = process.env): Config {
     logLevel: logLevel ?? "info",
   };
 
+  if (config.claudeMaxUsdPerJob === 0) problems.push("SPURHUND_MAX_CLAUDE_USD_PER_JOB must be > 0, got 0");
   if (problems.length) throw new ConfigError(problems);
   return config;
 }

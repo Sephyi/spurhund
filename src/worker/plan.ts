@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ENGINE_IDS, type EngineId } from "../config.js";
+import { DEFAULT_CLAUDE_JOB_CAP_USD, ENGINE_IDS, type EngineId } from "../config.js";
 import { AGENT_EFFORTS, agentWorstCase, estimateSegmentExaSpend, type AgentEffortName } from "../costs.js";
 
 export const DEPTHS = ["standard", "deep", "exhaustive"] as const;
@@ -169,7 +169,7 @@ export function validatePlan(plan: Plan, c: PlanConstraints): PlanCheck {
 }
 
 /** Human-readable plan for the approval step. */
-export function formatPlan(plan: Plan, depth: Depth, wc: WorstCase, maxExaUsd: number): string {
+export function formatPlan(plan: Plan, depth: Depth, wc: WorstCase, maxExaUsd: number, claudeMaxUsd = DEFAULT_CLAUDE_JOB_CAP_USD): string {
   const lines = [
     `Question: ${plan.question}`,
     `Depth: ${depth}. Languages: ${plan.languages.join(", ")}. Window: ${plan.timeWindow.from ?? "open"} to ${plan.timeWindow.to ?? "open"}.`,
@@ -192,6 +192,7 @@ export function formatPlan(plan: Plan, depth: Depth, wc: WorstCase, maxExaUsd: n
     `Worst-case Exa cost: $${wc.totalExaUsd.toFixed(2)} (agent runs $${wc.exaAgentUsd.toFixed(2)} + searches and page reads ~$${wc.exaSearchUsd.toFixed(2)}), hard cap $${maxExaUsd.toFixed(2)}.`,
     `Brave: about ${wc.braveRequests} requests, ~$${wc.braveUsd.toFixed(2)} (outside the Exa cap).`,
     "Claude usage for planning and research comes from the configured auth (subscription or API key).",
+    `Claude cap $${claudeMaxUsd.toFixed(2)} per job (subscription usage estimate). Report generation gets at least $0.15 even past the cap; planning is separate.`,
   );
   if (plan.notes) lines.push("", `Notes: ${plan.notes}`);
   return lines.join("\n");

@@ -10,6 +10,7 @@ export interface ReportInput {
   narrative?: Narrative;
   merge?: MergeResult;
   config: Pick<Config, "efforts">;
+  partialReason?: string;
 }
 
 export interface ReportJson {
@@ -105,13 +106,13 @@ export function buildReport(store: Store, input: ReportInput): { markdown: strin
     usage.set(s.role, phase);
   }
   const exaByEndpoint = store.costByEndpoint(job.id, "exa");
-  const partial = job.state !== "completed" || runs.some((r) => r.stopReason === "budget_reached" || r.stopReason === "time_limit_reached");
+  const partial = Boolean(input.partialReason) || job.state !== "completed" || runs.some((r) => r.stopReason === "budget_reached" || r.stopReason === "time_limit_reached");
   const partialReason =
     job.state === "canceled" ? "the job was canceled"
     : job.state === "failed" ? `the job failed: ${job.error ?? "unknown error"}`
     : job.state !== "completed" ? `the job is still ${job.state}`
     : runs.some((r) => r.stopReason === "budget_reached" || r.stopReason === "time_limit_reached") ? "an Exa Agent run stopped at its budget or time limit"
-    : null;
+    : input.partialReason ?? null;
 
   const json: ReportJson = {
     jobId: job.id,

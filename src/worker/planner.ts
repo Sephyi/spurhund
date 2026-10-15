@@ -136,7 +136,7 @@ export async function planResearch(deps: PlannerDeps, req: PlanRequest): Promise
     }
 
     const planId = store.createPlan({ question: plan.question, depth, plan, worstCaseUsd: check.worstCase.totalExaUsd, maxExaUsd });
-    return { planId, plan, depth, maxExaUsd, worstCase: check.worstCase, text: formatPlan(plan, depth, check.worstCase, maxExaUsd) };
+    return { planId, plan, depth, maxExaUsd, worstCase: check.worstCase, text: formatPlan(plan, depth, check.worstCase, maxExaUsd, config.claudeMaxUsdPerJob) };
   }
 
   throw new PlanError("The planner could not produce a valid plan after one correction.", previous?.errors ?? []);

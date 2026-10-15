@@ -124,12 +124,34 @@ export async function runJob(deps: PipelineDeps, job: JobRow): Promise<JobOutcom
   core.seedUserUrls(`${plan.question}\n${plan.notes ?? ""}`);
 
   const rules = sharedRules({ today, languages: plan.languages, window: plan.timeWindow });
+  let claudeReserved = 0;
+  let segmentsRemaining = plan.segments.length;
+  let claudeCapReached = false;
 
   const session = async (req: Omit<RunRequest, "systemPrompt" | "signal" | "onProgress">): Promise<RunResult> => {
+    const remaining = config.claudeMaxUsdPerJob - store.getJob(job.id)!.claudeCostUsd - claudeReserved;
+    const slots = req.role === "segment" ? Math.min(SEGMENT_CONCURRENCY, segmentsRemaining--) : 1;
+    if (remaining <= 0 && req.role !== "report") {
+      claudeCapReached = true;
+      const message = `Claude usage cap reached before ${req.label}`;
+      event(store.getJob(job.id)?.phase ?? "working", message);
+      store.addGap(job.id, req.label, message);
+      return { ok: false, text: "", costUsd: 0, turns: 0, subtype: "claude_cap_reached", errors: [] };
+    }
+    let maxBudgetUsd = Math.min(req.maxBudgetUsd ?? config.maxBudgetUsd ?? Infinity, remaining / slots);
+    // A final narrative is still useful after exhaustion, and may exceed the job cap by $0.15.
+    if (req.role === "report") maxBudgetUsd = Math.max(0.15, maxBudgetUsd);
+    claudeReserved += maxBudgetUsd;
     const started = Date.now();
-    const res = await runner.run({ ...req, systemPrompt: rules, signal, onProgress: progress });
+    let res: RunResult;
+    try {
+      res = await runner.run({ ...req, maxBudgetUsd, systemPrompt: rules, signal, onProgress: progress });
+    } finally {
+      claudeReserved -= maxBudgetUsd;
+    }
     store.addClaudeCost(job.id, res.costUsd);
     store.addClaudeSession({ jobId: job.id, role: req.role, label: req.label, costUsd: res.costUsd, turns: res.turns, subtype: res.subtype, durationMs: Date.now() - started });
+    if (res.subtype === "error_max_budget_usd" || (req.role !== "report" && store.getJob(job.id)!.claudeCostUsd >= config.claudeMaxUsdPerJob)) claudeCapReached = true;
     if (!res.ok && !signal.aborted) event(store.getJob(job.id)?.phase ?? "working", `${req.label} ended with ${res.subtype}${res.errors.length ? `: ${res.errors.join("; ")}` : ""}`);
     return res;
   };
@@ -296,7 +318,7 @@ export async function runJob(deps: PipelineDeps, job: JobRow): Promise<JobOutcom
       label: "report",
       model: config.models.orchestrator,
       effort: config.efforts.orchestrator,
-      prompt: reportPrompt({ plan, state: "completed" }),
+      prompt: reportPrompt({ plan, state: claudeCapReached ? "partial: Claude usage cap reached" : "completed" }),
       tools: buildToolset("report", { core, store, jobId: job.id }),
       outputSchema: jsonSchemaOf(NarrativeSchema),
       maxTurns: REPORT_TURNS,
@@ -317,7 +339,7 @@ export async function runJob(deps: PipelineDeps, job: JobRow): Promise<JobOutcom
       finishedAt: (deps.now?.() ?? new Date()).toISOString(),
     };
     store.refreshEvidence(job.id);
-    const { markdown, json } = buildReport(store, { job: fresh, planRow, narrative, merge: mergeResult, config });
+    const { markdown, json } = buildReport(store, { job: fresh, planRow, narrative, merge: mergeResult, config, partialReason: claudeCapReached ? "Claude usage cap reached" : undefined });
     store.saveReport(job.id, markdown, json);
     try {
       fs.mkdirSync(config.reportsDir, { recursive: true });

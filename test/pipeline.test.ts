@@ -152,6 +152,21 @@ const goodScript: Script = async (req, call) => {
 };
 
 describe("runJob: happy path (deep)", () => {
+  it("skips verification after usage exhaustion but writes a partial report with a reserve", async () => {
+    const s = setup({ depth: "standard", script: async (req, call, n) => ({ ...await goodScript(req, call, n), costUsd: 2 }) });
+    s.config.claudeMaxUsdPerJob = 3;
+    expect(await runJob(s.deps, s.job)).toBe("completed");
+    expect(s.runner.roles).not.toContain("verify");
+    expect(s.runner.roles.at(-1)).toBe("report");
+    expect(s.runner.calls.at(-1)!.maxBudgetUsd).toBe(0.15);
+    expect(s.runner.calls.filter((r) => r.role === "segment").reduce((sum, r) => sum + r.maxBudgetUsd!, 0)).toBeLessThanOrEqual(3);
+    const report = s.store.getReport(s.job.id)!;
+    expect(report.json).toMatchObject({ partial: true, partialReason: "Claude usage cap reached" });
+    expect(report.markdown).toContain("Partial result");
+    expect(s.store.listGaps(s.job.id).map((g) => g.description).join(" ")).toContain("Claude usage cap reached before verify");
+    expect(fs.existsSync(path.join(s.config.reportsDir, `${s.job.id}.md`))).toBe(true);
+  });
+
   it("records every Claude session and aggregates phase usage without changing the total", async () => {
     const s = setup({ script: goodScript });
     expect(await runJob(s.deps, s.job)).toBe("completed");
