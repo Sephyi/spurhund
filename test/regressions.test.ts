@@ -7,6 +7,7 @@ import { NarrativeSchema, mergePrompt, plannerSystem, reportPrompt, segmentPromp
 import { LONG_TEXT, harness } from "./helpers.js";
 import { summarize } from "../src/jobs.js";
 import { formatSearch } from "../src/mcp/format.js";
+import { Limiter } from "../src/util.js";
 
 const plan: Plan = {
   question: "Which releases support the protocol?",
@@ -223,4 +224,32 @@ describe("in-job search cache", () => {
       expect(h.exaClient.search).toHaveBeenCalledTimes(2);
     } finally { h.store.close(); }
   });
+});
+
+it("hands slots directly to waiters despite late microtask arrivals", async () => {
+  const limiter = new Limiter(2);
+  let active = 0;
+  let max = 0;
+  const releases: (() => void)[] = [];
+  const late: Promise<void>[] = [];
+  const task = async () => {
+    max = Math.max(max, ++active);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    active--;
+  };
+  const held = () => {
+    max = Math.max(max, ++active);
+    const p = new Promise<void>((resolve) => releases.push(resolve));
+    void p.then(() => {
+      active--;
+      queueMicrotask(() => { late.push(limiter.run(task)); });
+    });
+    return p;
+  };
+  const initial = [limiter.run(held), limiter.run(held), ...Array.from({ length: 6 }, () => limiter.run(task))];
+  releases.forEach((release) => release());
+  await Promise.all(initial);
+  await Promise.all(late);
+  expect(initial.length + late.length).toBe(10);
+  expect(max).toBe(2);
 });
