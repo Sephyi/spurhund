@@ -96,7 +96,9 @@ export async function withRetry<T>(fn: () => Promise<T>, opts: RetryOptions = {}
     } catch (err) {
       lastErr = err;
       if (i === attempts - 1 || !isRetryable(err)) throw err;
-      await wait(retryAfterOf(err) ?? baseMs * 2 ** i);
+      const retryAfter = retryAfterOf(err);
+      if (retryAfter !== undefined && retryAfter > 30_000) throw err;
+      await wait(Math.min(retryAfter ?? baseMs * 2 ** i, 30_000));
     }
   }
   throw lastErr;

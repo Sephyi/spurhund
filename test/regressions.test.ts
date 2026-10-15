@@ -7,7 +7,7 @@ import { NarrativeSchema, mergePrompt, plannerSystem, reportPrompt, segmentPromp
 import { LONG_TEXT, harness } from "./helpers.js";
 import { summarize } from "../src/jobs.js";
 import { formatSearch } from "../src/mcp/format.js";
-import { Limiter } from "../src/util.js";
+import { EngineError, Limiter, withRetry } from "../src/util.js";
 
 const plan: Plan = {
   question: "Which releases support the protocol?",
@@ -252,4 +252,13 @@ it("hands slots directly to waiters despite late microtask arrivals", async () =
   await Promise.all(late);
   expect(initial.length + late.length).toBe(10);
   expect(max).toBe(2);
+});
+
+it.each([30_001, 3_600_000])("refuses Retry-After %i ms without holding a limiter slot", async (ms) => {
+  const waits: number[] = [];
+  let calls = 0;
+  const error = new EngineError("rate limited", 429, ms);
+  await expect(withRetry(async () => { calls++; throw error; }, { sleepFn: async (n) => { waits.push(n); } })).rejects.toBe(error);
+  expect(waits).toEqual([]);
+  expect(calls).toBe(1);
 });
