@@ -4,7 +4,7 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { ConfigError, ENGINE_IDS, assertClaudeAuth, loadConfig, type EngineId } from "./config.js";
 import { formatStatus } from "./jobs.js";
 import { createLogger } from "./log.js";
-import { registerJobTools } from "./mcp/jobTools.js";
+import { exaCapInput, registerJobTools } from "./mcp/jobTools.js";
 import { formatSearch } from "./mcp/format.js";
 import { createMcpServer, SERVER_VERSION } from "./mcp/server.js";
 import { adhocCore, buildRuntime } from "./runtime.js";
@@ -55,6 +55,12 @@ const num = (v: string | undefined, name: string) => {
   if (!Number.isFinite(n)) throw new Error(`${name} must be a number`);
   return n;
 };
+
+function exaCap(value: string | undefined, max: number): number | undefined {
+  const parsed = exaCapInput(max).safeParse(value === undefined ? undefined : Number(value));
+  if (!parsed.success) throw new Error(`--max-exa: ${parsed.error.issues.map((i) => i.message).join("; ")}`);
+  return parsed.data;
+}
 
 async function main(argv: string[]): Promise<number> {
   const [command = "help", ...rest] = argv;
@@ -135,6 +141,7 @@ async function main(argv: string[]): Promise<number> {
       if (!question) throw new Error('Give a question: spurhund plan "<question>"');
       const depth = (values.depth ?? "standard") as Depth;
       if (!DEPTHS.includes(depth)) throw new Error(`--depth must be one of ${DEPTHS.join(", ")}`);
+      const maxExaUsd = exaCap(values["max-exa"], config.exaMaxUsdPerJob);
       assertClaudeAuth(config);
       const rt = buildRuntime(config, log);
       try {
@@ -143,7 +150,7 @@ async function main(argv: string[]): Promise<number> {
           depth,
           languages: values.lang?.split(",").map((s) => s.trim()).filter(Boolean),
           timeWindow: values.from || values.to ? { from: values.from, to: values.to } : undefined,
-          maxExaUsd: num(values["max-exa"], "--max-exa"),
+          maxExaUsd,
           allowUltra: values["allow-ultra"],
           notes: values.notes,
         });
@@ -164,9 +171,10 @@ async function main(argv: string[]): Promise<number> {
       const planId = positionals[0];
       if (!planId) throw new Error("Give a plan id: spurhund start <plan_id> --approve");
       if (!values.approve) throw new Error("Refusing to start without --approve. Read the plan and its worst-case cost first.");
+      const maxExaUsd = exaCap(values["max-exa"], config.exaMaxUsdPerJob);
       const rt = buildRuntime(config, log);
       try {
-        const r = buildServices(rt).jobs.start(planId, { maxExaUsd: num(values["max-exa"], "--max-exa") });
+        const r = buildServices(rt).jobs.start(planId, { maxExaUsd });
         out(`Job ${r.jobId} ${r.queued ? "queued" : "started"}. Exa cap $${r.capUsd.toFixed(2)}.${r.note ? ` ${r.note}` : ""}\nCheck it with: spurhund status ${r.jobId}`);
       } finally {
         rt.store.close();

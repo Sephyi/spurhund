@@ -16,12 +16,14 @@ export interface JobServices {
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use YYYY-MM-DD");
 const jobId = z.string().regex(/^job_[0-9a-f]{12}$/, "a job id looks like job_0123456789ab");
 
+export const exaCapInput = (max = 100) => z.number().min(0.1).max(Math.min(max, 100)).optional();
+
 export const planInput = z.object({
   question: z.string().min(10).max(4000).describe("The research question, with scope and what the answer will be used for."),
   depth: z.enum(DEPTHS).default("standard").describe("standard: 1-3 segments. deep: 3-6 segments, gap pass. exhaustive: 4-10 segments, larger Exa Agent runs."),
   languages: z.array(z.string().min(2).max(8)).max(5).optional().describe("Languages beyond English and German that the USER approved. Never add one on your own."),
   time_window: z.object({ from: isoDate.optional(), to: isoDate.optional() }).optional().describe("Absolute dates; relative times must be converted first."),
-  max_exa_usd: z.number().min(0.1).max(100).optional().describe("Hard cap on Exa spend for the job. Defaults to the server setting."),
+  max_exa_usd: exaCapInput().describe("Hard cap on Exa spend for the job. Defaults to the server setting."),
   allow_ultra: z.boolean().default(false).describe("Allow Exa Agent effort ultra (30 min to 3 h, metered). Only when the user asked for maximum depth."),
   notes: z.string().max(2000).optional(),
 });
@@ -29,7 +31,7 @@ export const planInput = z.object({
 export const startInput = z.object({
   plan_id: z.string().min(1),
   approve: z.boolean().describe("Must be true. Set it only after the user has seen the plan and its worst-case cost and approved."),
-  max_exa_usd: z.number().min(0.1).max(100).optional().describe("Lower the Exa cap below the plan's; cannot raise it."),
+  max_exa_usd: exaCapInput().describe("Lower the Exa cap below the plan's; cannot raise it."),
 });
 
 export function registerJobTools(server: McpServer, svc: JobServices): void {

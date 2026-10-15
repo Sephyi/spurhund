@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { afterEach, describe, expect, it } from "vitest";
+import { planInput } from "../src/mcp/jobTools.js";
 
 const CLI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/cli.ts");
 // Bun runs TypeScript directly; Node (vitest) needs the tsx loader.
@@ -37,6 +38,38 @@ async function startServer(extraEnv: Record<string, string> = {}) {
 }
 
 describe("spurhund serve (real stdio process)", () => {
+  it.each(["plan", "start"])("%s rejects invalid Exa caps before opening the runtime", (command) => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "spurhund-cli-cap-"));
+    cleanup.push(() => fs.rmSync(home, { recursive: true, force: true }));
+    for (const value of ["0", "-1", "NaN", "Infinity", "0.01", "4", "101"]) {
+      const parsed = planInput.safeParse({ question: "Offline cap validation", max_exa_usd: Number(value) });
+      const message = Number(value) > 3 && Number.isFinite(Number(value))
+        ? "Too big: expected number to be <=3"
+        : parsed.success ? "unexpected valid input" : parsed.error.issues[0]!.message;
+      const child = spawnSync(process.execPath, [...LAUNCH, command, "offline-placeholder", "--approve", `--max-exa=${value}`].filter((arg) => command === "start" || arg !== "--approve"), {
+        env: { PATH: process.env.PATH ?? "", HOME: home, SPURHUND_HOME: home, SPURHUND_EXA_MAX_USD_PER_JOB: "3" },
+        encoding: "utf8", timeout: 10_000,
+      });
+      expect(child.status, `${command} ${value}`).toBe(1);
+      expect(child.stderr, `${command} ${value}`).toContain(`--max-exa: ${message}`);
+      expect(fs.existsSync(path.join(home, "spurhund.db"))).toBe(false);
+    }
+  });
+
+  it.each(["plan", "start"])("%s accepts the lower and configured upper cap boundaries", (command) => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "spurhund-cli-cap-boundary-"));
+    cleanup.push(() => fs.rmSync(home, { recursive: true, force: true }));
+    for (const value of ["0.1", "3"]) {
+      const child = spawnSync(process.execPath, [...LAUNCH, command, "offline-placeholder", "--approve", `--max-exa=${value}`].filter((arg) => command === "start" || arg !== "--approve"), {
+        env: { PATH: process.env.PATH ?? "", HOME: home, SPURHUND_HOME: home, SPURHUND_EXA_MAX_USD_PER_JOB: "3" },
+        encoding: "utf8", timeout: 10_000,
+      });
+      expect(child.status).toBe(1);
+      expect(child.stderr).not.toContain("--max-exa:");
+      expect(child.stderr).toMatch(command === "plan" ? /CLAUDE_CODE_OAUTH_TOKEN/ : /Unknown plan/);
+    }
+  });
+
   it("worker startup logs to stderr without creating a second worker.log", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "spurhund-worker-log-"));
     cleanup.push(() => fs.rmSync(home, { recursive: true, force: true }));
