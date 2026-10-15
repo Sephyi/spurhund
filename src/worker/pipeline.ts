@@ -113,8 +113,7 @@ export async function runJob(deps: PipelineDeps, job: JobRow): Promise<JobOutcom
     if (signal.aborted || store.isCancelRequested(job.id)) throw new CanceledError();
   };
   const lastProgress = new Map<string, number>();
-  const progress = (message: string) => {
-    const label = message.split(":")[0] ?? message;
+  const progress = (label: string, message: string) => {
     const now = Date.now();
     if (now - (lastProgress.get(label) ?? 0) < PROGRESS_EVENT_INTERVAL_MS) return;
     lastProgress.set(label, now);
@@ -146,7 +145,7 @@ export async function runJob(deps: PipelineDeps, job: JobRow): Promise<JobOutcom
     const started = Date.now();
     let res: RunResult;
     try {
-      res = await runner.run({ ...req, maxBudgetUsd, systemPrompt: rules, signal, onProgress: progress });
+      res = await runner.run({ ...req, maxBudgetUsd, systemPrompt: rules, signal, onProgress: (message) => progress(req.label, message) });
     } finally {
       claudeReserved -= maxBudgetUsd;
     }

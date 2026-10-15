@@ -152,6 +152,21 @@ const goodScript: Script = async (req, call) => {
 };
 
 describe("runJob: happy path (deep)", () => {
+  it("throttles duplicate progress per session without hiding another segment", async () => {
+    const s = setup({ script: async (req, call, n) => {
+      if (req.role === "segment") {
+        req.onProgress?.(`${req.label}: search`);
+        req.onProgress?.(`${req.label}: fetch`);
+      }
+      return goodScript(req, call, n);
+    } });
+    try {
+      expect(await runJob(s.deps, s.job)).toBe("completed");
+      const messages = s.store.listEvents(s.job.id, 100).map((e) => e.message).filter((m) => /^segment:.*: (search|fetch)$/.test(m));
+      expect(messages.sort()).toEqual(["segment:openssl: search", "segment:rustls: search"]);
+    } finally { s.store.close(); }
+  });
+
   it("applies the configured turn ceiling to report sessions too", async () => {
     const s = setup({ script: goodScript });
     s.config.maxTurns = 2;
