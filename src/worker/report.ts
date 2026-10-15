@@ -181,7 +181,7 @@ function renderMarkdown(r: ReportJson, plan: Plan): string {
   }
   if (!r.findings.length) L.push("_No findings were recorded._", "");
 
-  L.push("## Coverage", "", "| Segment | Assessment | Findings | Note |", "| --- | --- | --- | --- |");
+  L.push("## Coverage (assessed at merge, before verification)", "", "| Segment | Assessment | Findings | Note |", "| --- | --- | --- | --- |");
   for (const c of r.coverage) L.push(`| ${c.name} | ${c.level} | ${c.findings} | ${c.note.replace(/\|/g, "/").replace(/\n/g, " ")} |`);
   L.push("");
 

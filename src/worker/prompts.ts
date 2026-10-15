@@ -129,6 +129,7 @@ export function mergePrompt(opts: { plan: Plan; exaRunIds: string[] }): string {
       ? `Exa Agent runs finished: ${opts.exaRunIds.join(", ")}. Read each with exa_run_output. Record a finding for every material claim a run supports, citing URLs from its grounding; skip claims without a cited page.`
       : "No Exa Agent runs were part of this job.",
     "Then list the findings, merge duplicates (same claim, reworded or found by different engines) with merge_findings, and assess how well each segment is covered.",
+    "Verification runs after you. Do not comment on verification status; judge coverage only by what was found and from where.",
     "Return the coverage assessment: for each segment good, thin or none, with a reason, and the areas (periods, regions, entity types, languages) that deserve a targeted follow-up.",
   ].join("\n");
 }

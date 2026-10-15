@@ -3,6 +3,7 @@ import { loadConfig } from "../src/config.js";
 import type { Plan } from "../src/worker/plan.js";
 import { buildReport } from "../src/worker/report.js";
 import { buildToolset } from "../src/worker/tools.js";
+import { mergePrompt } from "../src/worker/prompts.js";
 import { LONG_TEXT, harness } from "./helpers.js";
 
 const plan: Plan = {
@@ -65,4 +66,12 @@ describe("evidence refresh", () => {
       expect(h.store.getFinding(b)!.evidence).toBe("snippet");
     } finally { h.store.close(); }
   });
+});
+
+it("keeps coverage explicitly separate from later verification", () => {
+  const h = evidenceSetup();
+  try {
+    expect(mergePrompt({ plan, exaRunIds: [] })).toContain("Verification runs after you. Do not comment on verification status; judge coverage only by what was found and from where.");
+    expect(h.report().markdown).toContain("Coverage (assessed at merge, before verification)");
+  } finally { h.store.close(); }
 });
