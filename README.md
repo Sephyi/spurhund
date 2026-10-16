@@ -1,3 +1,8 @@
+> [!WARNING]
+> I haven't had the chance to finish this yet: final optimizations, testing, and a SKILL for automatic use are still outstanding. Code-wise, though, the codebase should be essentially ready.
+>
+> Initial observations from a few test runs suggest it performs best at researching unclear information: resolving scarce and contradictory statements from different sources, digging deeper, and surfacing their true implications.
+
 <h1 align="center">spurhund</h1>
 
 <p align="center">
